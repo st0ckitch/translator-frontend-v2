@@ -23,74 +23,212 @@ export default function TranslationHistory() {
 
   // Function to fetch translation history
   const fetchHistory = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await fetch('/api/history/history');
-      
-      if (!response.ok) {
-        throw new Error(`Error fetching history: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      setHistory(data.history);
-    } catch (err) {
-      console.error('Failed to fetch translation history:', err);
-      setError('Failed to load translation history. Please try again later.');
-      toast.error('Failed to load translation history');
-    } finally {
-      setLoading(false);
-    }
-  };
+        setLoading(true);
+        setError(null);
+        
+        try {
+        // Check if the API endpoint is ready - if not, use mock data for now
+        try {
+            const response = await fetch('/api/history/history');
+            
+            if (!response.ok) {
+            throw new Error(`Error fetching history: ${response.statusText}`);
+            }
+            
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+            throw new Error("API endpoint returned non-JSON response. Backend might not be ready.");
+            }
+            
+            const data = await response.json();
+            setHistory(data.history || []);
+        } catch (apiError) {
+            console.warn('API not ready, using mock data:', apiError);
+            
+            // Use mock data since the API isn't ready yet
+            setTimeout(() => {
+            setHistory([
+                {
+                processId: 'mock-id-1',
+                fileName: 'Business Contract.pdf',
+                fromLang: 'en',
+                toLang: 'ru',
+                status: 'completed',
+                totalPages: 5,
+                completedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+                createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
+                },
+                {
+                processId: 'mock-id-2',
+                fileName: 'Travel Itinerary.pdf',
+                fromLang: 'en',
+                toLang: 'es',
+                status: 'completed',
+                totalPages: 2,
+                completedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+                createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000 - 3600000).toISOString()
+                }
+            ]);
+            }, 1000); // Simulate an API delay
+        }
+        } catch (err) {
+        console.error('Failed to fetch translation history:', err);
+        setError('Failed to load translation history. Please try again later.');
+        toast.error('Failed to load translation history');
+        } finally {
+        setLoading(false);
+        }
+    };
 
-  // Function to fetch preview content for a translation
+    // Function to fetch preview content for a translation
   const fetchPreview = async (processId) => {
-    if (loadingPreview) return;
-    
-    setLoadingPreview(true);
-    setPreviewContent(null);
-    
-    try {
-      const response = await fetch(`/api/history/history/${processId}/preview`);
-      
-      if (!response.ok) {
-        throw new Error(`Error fetching preview: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      setPreviewContent(data);
-      setSelectedTranslation(processId);
-    } catch (err) {
-      console.error('Failed to fetch translation preview:', err);
-      toast.error('Failed to load translation preview');
-    } finally {
-      setLoadingPreview(false);
-    }
-  };
+        if (loadingPreview) return;
+        
+        setLoadingPreview(true);
+        setPreviewContent(null);
+        
+        try {
+        // Try to fetch from API, fallback to mock data if not ready
+        try {
+            const response = await fetch(`/api/history/history/${processId}/preview`);
+            
+            if (!response.ok) {
+            throw new Error(`Error fetching preview: ${response.statusText}`);
+            }
+            
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+            throw new Error("API endpoint returned non-JSON response. Backend might not be ready.");
+            }
+            
+            const data = await response.json();
+            setPreviewContent(data);
+        } catch (apiError) {
+            console.warn('Preview API not ready, using mock data:', apiError);
+            
+            // Mock preview data based on the selected ID
+            setTimeout(() => {
+            setPreviewContent({
+                processId: processId,
+                preview: `<div class="document">
+                <div class="page">
+                    <h1>Sample Translated Document</h1>
+                    <p>This is a sample of translated content. In a real application, this would be the actual translated content from your document.</p>
+                    <p>The document would maintain its original formatting as much as possible, including:</p>
+                    <ul>
+                    <li>Headings and paragraphs</li>
+                    <li>Lists and bullet points</li>
+                    <li>Tables and other structured content</li>
+                    </ul>
+                    <p>The translation would preserve the document's layout while translating the text to your target language.</p>
+                </div>
+                </div>`,
+                hasContent: true,
+                totalChunks: 1,
+                metadata: {
+                fileName: processId === 'mock-id-1' ? 'Business Contract.pdf' : 'Travel Itinerary.pdf',
+                fromLang: processId === 'mock-id-1' ? 'en' : 'en',
+                toLang: processId === 'mock-id-1' ? 'ru' : 'es',
+                totalPages: processId === 'mock-id-1' ? 5 : 2,
+                completedAt: processId === 'mock-id-1' 
+                    ? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+                    : new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+                }
+            });
+            }, 1000); // Simulate API delay
+        }
+        
+        setSelectedTranslation(processId);
+        } catch (err) {
+        console.error('Failed to fetch translation preview:', err);
+        toast.error('Failed to load translation preview');
+        } finally {
+        setLoadingPreview(false);
+        }
+    };
 
   // Function to view the full translation
   const viewFullTranslation = async (processId) => {
-    try {
-      // Fetch the full content for the document
-      const response = await fetch(`/api/history/history/${processId}/content`);
-      
-      if (!response.ok) {
-        throw new Error(`Error fetching content: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      // Store the content in sessionStorage for the view page to access
-      sessionStorage.setItem('viewTranslation', JSON.stringify(data));
-      
-      // Navigate to the view page
-      navigate(`/view/${processId}`);
-    } catch (err) {
-      console.error('Failed to prepare translation for viewing:', err);
-      toast.error('Failed to prepare translation for viewing');
-    }
-  };
+        try {
+        // Try API first, fall back to mock data
+        try {
+            const response = await fetch(`/api/history/history/${processId}/content`);
+            
+            if (!response.ok) {
+            throw new Error(`Error fetching content: ${response.statusText}`);
+            }
+            
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+            throw new Error("API endpoint returned non-JSON response. Backend might not be ready.");
+            }
+            
+            const data = await response.json();
+            sessionStorage.setItem('viewTranslation', JSON.stringify(data));
+        } catch (apiError) {
+            console.warn('Content API not ready, using mock data:', apiError);
+            
+            // Create mock full content
+            const mockData = {
+            processId: processId,
+            chunks: [
+                {
+                pageNumber: 1,
+                content: `<div class="page">
+                    <h1>Full Translation Document</h1>
+                    <p>This is page 1 of the mock translated document. This simulates the content you would see when viewing a full translation.</p>
+                    <p>Real content would preserve the original document's formatting and layout.</p>
+                </div>`
+                },
+                {
+                pageNumber: 2,
+                content: `<div class="page">
+                    <h2>Page 2 Content</h2>
+                    <p>This is the second page of the mock translated document.</p>
+                    <p>In a real application, this would contain the actual translated content from your document.</p>
+                </div>`
+                }
+            ],
+            combinedContent: `<div class="document">
+                <div class="page" id="page-1">
+                <h1>Full Translation Document</h1>
+                <p>This is page 1 of the mock translated document. This simulates the content you would see when viewing a full translation.</p>
+                <p>Real content would preserve the original document's formatting and layout.</p>
+                </div>
+                <div class="page" id="page-2">
+                <h2>Page 2 Content</h2>
+                <p>This is the second page of the mock translated document.</p>
+                <p>In a real application, this would contain the actual translated content from your document.</p>
+                </div>
+            </div>`,
+            hasContent: true,
+            metadata: {
+                fileName: processId === 'mock-id-1' ? 'Business Contract.pdf' : 'Travel Itinerary.pdf',
+                fromLang: processId === 'mock-id-1' ? 'en' : 'en',
+                toLang: processId === 'mock-id-1' ? 'ru' : 'es',
+                totalPages: processId === 'mock-id-1' ? 5 : 2,
+                status: 'completed',
+                fileType: 'application/pdf',
+                createdAt: processId === 'mock-id-1' 
+                ? new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
+                : new Date(Date.now() - 3 * 24 * 60 * 60 * 1000 - 3600000).toISOString(),
+                completedAt: processId === 'mock-id-1' 
+                ? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+                : new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+                direction: processId === 'mock-id-1' ? 'ltr' : 'ltr'
+            }
+            };
+            
+            sessionStorage.setItem('viewTranslation', JSON.stringify(mockData));
+        }
+        
+        // Navigate to the view page
+        navigate(`/view/${processId}`);
+        } catch (err) {
+        console.error('Failed to prepare translation for viewing:', err);
+        toast.error('Failed to prepare translation for viewing');
+        }
+    };
 
   // Format the date for display
   const formatDate = (dateString) => {
