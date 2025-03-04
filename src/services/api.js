@@ -954,6 +954,199 @@ export const documentService = {
   }
 };
 
+// Translation History Service
+export const historyService = {
+  // Get recent completed translations
+  getRecentTranslations: async (limit = 2) => {
+    console.log(`🔄 Fetching recent translations (limit: ${limit})...`);
+    try {
+      // Try to fetch from the API endpoint first
+      try {
+        const response = await api.get(`/history/history?limit=${limit}`);
+        console.log('✅ Recent translations fetched successfully:', response.data);
+        return response.data;
+      } catch (error) {
+        // If the endpoint isn't ready yet, use mock data
+        if (error.response?.status === 404 || 
+            error.message?.includes('failed') || 
+            !error.response?.headers?.['content-type']?.includes('application/json')) {
+          console.warn('⚠️ History API not available, using mock data');
+          
+          // Create mock data for development
+          return {
+            history: [
+              {
+                processId: 'mock-id-1',
+                fileName: 'Business Contract.pdf',
+                fromLang: 'en',
+                toLang: 'ru',
+                status: 'completed',
+                totalPages: 5,
+                completedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+                createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
+              },
+              {
+                processId: 'mock-id-2',
+                fileName: 'Travel Itinerary.pdf',
+                fromLang: 'en',
+                toLang: 'es',
+                status: 'completed',
+                totalPages: 2,
+                completedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+                createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000 - 3600000).toISOString()
+              }
+            ],
+            total: 2
+          };
+        }
+        
+        // If it's another type of error, rethrow it
+        throw error;
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch recent translations:', error);
+      throw error;
+    }
+  },
+  
+  // Get translation preview
+  getTranslationPreview: async (processId) => {
+    console.log(`🔄 Fetching preview for translation: ${processId}...`);
+    try {
+      const response = await api.get(`/history/history/${processId}/preview`);
+      console.log('✅ Translation preview fetched successfully');
+      return response.data;
+    } catch (error) {
+      // If the endpoint isn't ready yet, use mock data
+      if (error.response?.status === 404 || 
+          error.message?.includes('failed') || 
+          !error.response?.headers?.['content-type']?.includes('application/json')) {
+        console.warn('⚠️ Preview API not available, using mock data');
+        
+        // Create mock preview data
+        return {
+          processId: processId,
+          preview: `<div class="document">
+            <div class="page">
+              <h1>Sample Translated Document</h1>
+              <p>This is a sample of translated content. In a real application, this would be the actual translated content from your document.</p>
+              <p>The document would maintain its original formatting as much as possible, including:</p>
+              <ul>
+                <li>Headings and paragraphs</li>
+                <li>Lists and bullet points</li>
+                <li>Tables and other structured content</li>
+              </ul>
+              <p>The translation would preserve the document's layout while translating the text to your target language.</p>
+            </div>
+          </div>`,
+          hasContent: true,
+          totalChunks: 1,
+          metadata: {
+            fileName: processId === 'mock-id-1' ? 'Business Contract.pdf' : 'Travel Itinerary.pdf',
+            fromLang: processId === 'mock-id-1' ? 'en' : 'en',
+            toLang: processId === 'mock-id-1' ? 'ru' : 'es',
+            totalPages: processId === 'mock-id-1' ? 5 : 2,
+            completedAt: processId === 'mock-id-1' 
+              ? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+              : new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+          }
+        };
+      }
+      
+      console.error('❌ Failed to fetch translation preview:', error);
+      throw error;
+    }
+  },
+  
+  // Get full translation content
+  getTranslationContent: async (processId) => {
+    console.log(`🔄 Fetching full content for translation: ${processId}...`);
+    try {
+      const response = await api.get(`/history/history/${processId}/content`);
+      console.log('✅ Translation content fetched successfully');
+      return response.data;
+    } catch (error) {
+      // If the endpoint isn't ready yet, use mock data
+      if (error.response?.status === 404 || 
+          error.message?.includes('failed') || 
+          !error.response?.headers?.['content-type']?.includes('application/json')) {
+        console.warn('⚠️ Content API not available, using mock data');
+        
+        // Create mock full content
+        return {
+          processId: processId,
+          chunks: [
+            {
+              pageNumber: 1,
+              content: `<div class="page">
+                <h1>Full Translation Document</h1>
+                <p>This is page 1 of the mock translated document. This simulates the content you would see when viewing a full translation.</p>
+                <p>Real content would preserve the original document's formatting and layout.</p>
+              </div>`
+            },
+            {
+              pageNumber: 2,
+              content: `<div class="page">
+                <h2>Page 2 Content</h2>
+                <p>This is the second page of the mock translated document.</p>
+                <p>In a real application, this would contain the actual translated content from your document.</p>
+              </div>`
+            }
+          ],
+          combinedContent: `<div class="document">
+            <div class="page" id="page-1">
+              <h1>Full Translation Document</h1>
+              <p>This is page 1 of the mock translated document. This simulates the content you would see when viewing a full translation.</p>
+              <p>Real content would preserve the original document's formatting and layout.</p>
+            </div>
+            <div class="page" id="page-2">
+              <h2>Page 2 Content</h2>
+              <p>This is the second page of the mock translated document.</p>
+              <p>In a real application, this would contain the actual translated content from your document.</p>
+            </div>
+          </div>`,
+          hasContent: true,
+          metadata: {
+            fileName: processId === 'mock-id-1' ? 'Business Contract.pdf' : 'Travel Itinerary.pdf',
+            fromLang: processId === 'mock-id-1' ? 'en' : 'en',
+            toLang: processId === 'mock-id-1' ? 'ru' : 'es',
+            totalPages: processId === 'mock-id-1' ? 5 : 2,
+            status: 'completed',
+            fileType: 'application/pdf',
+            createdAt: processId === 'mock-id-1' 
+              ? new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
+              : new Date(Date.now() - 3 * 24 * 60 * 60 * 1000 - 3600000).toISOString(),
+            completedAt: processId === 'mock-id-1' 
+              ? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+              : new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+            direction: 'ltr'
+          }
+        };
+      }
+      
+      console.error('❌ Failed to fetch translation content:', error);
+      throw error;
+    }
+  },
+  
+  // Get user's translation statistics
+  getTranslationStats: async () => {
+    console.log('🔄 Fetching translation statistics...');
+    try {
+      // This endpoint doesn't exist yet - implement it later
+      // For now, return mock data
+      return {
+        totalTranslations: 5,
+        totalPages: 14,
+        mostRecentDate: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error('❌ Failed to fetch translation statistics:', error);
+      throw error;
+    }
+  }
+};
+
 // Add a global function for checking token info from browser console
 window.checkTokenInfo = async () => {
   try {
