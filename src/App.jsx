@@ -11,6 +11,8 @@ import {
 import Layout from './components/Layout'
 import DocumentTranslationPage from './components/DocumentTranslation'
 import AccountSettings from './components/AccountSettingsPage'
+import TranslationHistoryPage from './components/TranslationHistoryPage'
+import TranslationView from './components/TranslationView'
 
 function App() {
   return (
@@ -40,6 +42,30 @@ function App() {
               <>
                 <SignedIn>
                   <AccountSettings />
+                </SignedIn>
+                <SignedOut>
+                  <RedirectToSignIn />
+                </SignedOut>
+              </>
+            } />
+            
+            {/* Translation History Route */}
+            <Route path="/history" element={
+              <>
+                <SignedIn>
+                  <TranslationHistoryPage />
+                </SignedIn>
+                <SignedOut>
+                  <RedirectToSignIn />
+                </SignedOut>
+              </>
+            } />
+            
+            {/* Translation View Route */}
+            <Route path="/view/:processId" element={
+              <>
+                <SignedIn>
+                  <TranslationView />
                 </SignedIn>
                 <SignedOut>
                   <RedirectToSignIn />

@@ -1,12 +1,13 @@
-import { Outlet, Link } from 'react-router-dom'
-import { FileText, Layers, Menu, X, Settings } from 'lucide-react'
-import { useState } from 'react'
+import { Link, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
+import { FileText, Menu, X, Settings, Clock } from 'lucide-react';
+import { useState } from 'react';
 import { 
   SignedIn, 
   SignedOut, 
   UserButton, 
   useUser 
-} from '@clerk/clerk-react'
+} from '@clerk/clerk-react';
 
 // DocTranslator Logo
 const DocTranslatorLogo = () => (
@@ -27,8 +28,12 @@ const DocTranslatorLogo = () => (
 );
 
 export default function Layout() {
-  const { user, isLoaded } = useUser()
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { user, isLoaded } = useUser();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const location = useLocation();
+  
+  // Helper to check if a route is active
+  const isActive = (path) => location.pathname === path;
   
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -60,26 +65,38 @@ export default function Layout() {
               <SignedIn>
                 <div className="flex items-center space-x-4">
                   <Link 
-                    to="/documents" 
-                    className="px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100"
+                    to="/" 
+                    className={`px-3 py-2 rounded-md text-sm font-medium ${
+                      isActive('/') 
+                        ? 'bg-indigo-50 text-indigo-700' 
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
                   >
                     <div className="flex items-center">
                       <FileText className="h-4 w-4 mr-1" />
-                      Documents
+                      Translate
                     </div>
                   </Link>
                   <Link 
                     to="/history" 
-                    className="px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100"
+                    className={`px-3 py-2 rounded-md text-sm font-medium ${
+                      isActive('/history') 
+                        ? 'bg-indigo-50 text-indigo-700' 
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
                   >
                     <div className="flex items-center">
-                      <Layers className="h-4 w-4 mr-1" />
+                      <Clock className="h-4 w-4 mr-1" />
                       History
                     </div>
                   </Link>
                   <Link 
                     to="/settings" 
-                    className="px-3 py-2 rounded-md text-sm font-medium text-gray-600 hover:bg-gray-100"
+                    className={`px-3 py-2 rounded-md text-sm font-medium ${
+                      isActive('/settings') 
+                        ? 'bg-indigo-50 text-indigo-700' 
+                        : 'text-gray-600 hover:bg-gray-100'
+                    }`}
                   >
                     <div className="flex items-center">
                       <Settings className="h-4 w-4 mr-1" />
@@ -130,23 +147,45 @@ export default function Layout() {
           <div className="px-2 pt-2 pb-3 space-y-1 border-t">
             <SignedIn>
               <Link 
-                to="/documents" 
-                className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100"
+                to="/" 
+                className={`block px-3 py-2 rounded-md text-base font-medium ${
+                  isActive('/') 
+                    ? 'bg-indigo-50 text-indigo-700' 
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 <div className="flex items-center">
                   <FileText className="h-5 w-5 mr-2" />
-                  Documents
+                  Translate
                 </div>
               </Link>
               <Link 
                 to="/history" 
-                className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:bg-gray-100"
+                className={`block px-3 py-2 rounded-md text-base font-medium ${
+                  isActive('/history') 
+                    ? 'bg-indigo-50 text-indigo-700' 
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
                 onClick={() => setMobileMenuOpen(false)}
               >
                 <div className="flex items-center">
-                  <Layers className="h-5 w-5 mr-2" />
+                  <Clock className="h-5 w-5 mr-2" />
                   History
+                </div>
+              </Link>
+              <Link 
+                to="/settings" 
+                className={`block px-3 py-2 rounded-md text-base font-medium ${
+                  isActive('/settings') 
+                    ? 'bg-indigo-50 text-indigo-700' 
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <div className="flex items-center">
+                  <Settings className="h-5 w-5 mr-2" />
+                  Settings
                 </div>
               </Link>
               <div className="px-3 py-2 text-sm text-gray-500">
@@ -197,5 +236,5 @@ export default function Layout() {
         </div>
       </footer>
     </div>
-  )
+  );
 }
