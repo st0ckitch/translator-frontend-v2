@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useUser } from '@clerk/clerk-react';
-import { Clock, ChartBar, FileText, Loader2 } from 'lucide-react';
+import { Clock, BarChart2, FileText, Loader2 } from 'lucide-react';
 import TranslationHistory from './TranslationHistory';
 
 export default function TranslationHistoryPage() {
@@ -86,7 +86,7 @@ export default function TranslationHistoryPage() {
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-medium text-gray-700">Total Pages</h3>
                   <div className="p-2 bg-green-100 rounded-full">
-                    <ChartBar className="h-5 w-5 text-green-600" />
+                    <BarChart2 className="h-5 w-5 text-green-600" />
                   </div>
                 </div>
                 <p className="text-3xl font-bold text-green-600">{stats?.totalPages || 0}</p>
