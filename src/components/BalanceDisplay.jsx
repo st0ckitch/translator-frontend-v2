@@ -133,10 +133,10 @@ export default function BalanceDisplay() {
               </div>
               
               <div className="flex gap-2">
-                <AddPages 
+                {/* <AddPages 
                   onSuccess={handleBalanceUpdate} 
                   className="text-sm px-3 py-1.5"
-                />
+                /> */}
                 <PurchasePages 
                   onSuccess={handleBalanceUpdate}
                   className="text-sm px-3 py-1.5"
