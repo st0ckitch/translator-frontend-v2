@@ -22,7 +22,7 @@ const LANGUAGE_OPTIONS = [
   { value: 'zh', label: 'Chinese' },
   { value: 'ja', label: 'Japanese' },
   { value: 'ko', label: 'Korean' },
-  // { value: 'ar', label: 'Arabic' },
+  { value: 'ar', label: 'Arabic' },
   { value: 'hi', label: 'Hindi' },
   // { value: 'fa', label: 'Persian' },
   { value: 'ka', label: 'Georgian'}
