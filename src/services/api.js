@@ -433,9 +433,9 @@ export const useApiAuth = () => {
             if (!window.__lastApiTokenRefresh) {
               window.__lastApiTokenRefresh = 0;
             }
-
+      
             const timeSinceLastRefresh = now - window.__lastApiTokenRefresh;
-
+      
             if (timeSinceLastRefresh < 5000) { // 5 seconds
               // If we've refreshed very recently, assume the token is valid
               // This prevents rapid succession of refresh attempts
@@ -464,6 +464,27 @@ export const useApiAuth = () => {
           // Add the token to the request if available
           if (authToken) {
             config.headers.Authorization = `Bearer ${authToken}`;
+          }
+          
+          // Add CORS headers for all requests
+          config.headers['Access-Control-Allow-Origin'] = '*';
+          
+          // Special handling for /documents/translate endpoint
+          if (config.url && config.url.includes('/documents/translate')) {
+            // Make sure content type is not being overridden for FormData
+            if (config.data instanceof FormData) {
+              // Don't set Content-Type for FormData - browser will set it with boundary
+              delete config.headers['Content-Type'];
+            }
+            
+            // Log detailed information about the request for debugging
+            console.log(`Enhanced translation request headers:`, {
+              url: config.url,
+              method: config.method,
+              hasAuth: !!config.headers.Authorization,
+              contentType: config.headers['Content-Type'],
+              isFormData: config.data instanceof FormData
+            });
           }
         } catch (error) {
           console.error('Failed to retrieve authentication token:', error);
@@ -696,6 +717,15 @@ export const documentService = {
     if (error.response && (error.response.status === 401 || error.response.status === 403)) {
       console.warn(`⚠️ Authentication error for ${endpoint}, refreshing token and retrying...`);
       
+      // Log details of the auth error for debugging
+      console.log('Auth error details:', {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        url: error.config?.url,
+        method: error.config?.method,
+        hasAuthHeader: !!error.config?.headers?.Authorization
+      });
+      
       // Refresh token
       try {
         // Clear existing token to force refresh
@@ -714,14 +744,78 @@ export const documentService = {
           // Store the new token
           authToken = token;
           
+          // Parse the token to check expiration
+          try {
+            const parts = token.split('.');
+            if (parts.length === 3) {
+              const payload = JSON.parse(atob(parts[1]));
+              if (payload.exp) {
+                const expiresAt = new Date(payload.exp * 1000);
+                console.log(`New token expires at: ${expiresAt.toISOString()}`);
+              }
+            }
+          } catch (e) {
+            console.warn('Error parsing token:', e);
+          }
+          
           // Wait a moment for token to propagate
           await new Promise(resolve => setTimeout(resolve, 300));
           
           // Retry the original request
-          return await retryCallback();
+          console.log(`Retrying ${endpoint} request with new token`);
+          
+          // Special handling for FormData
+          let retry = retryCallback();
+          
+          // Add timeout to ensure we don't hang indefinitely
+          const retryWithTimeout = Promise.race([
+            retry,
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Retry request timed out')), 20000)
+            )
+          ]);
+          
+          return await retryWithTimeout;
+        } else {
+          throw new Error('Failed to obtain new token');
         }
       } catch (retryError) {
         console.error(`❌ Retry after token refresh failed for ${endpoint}:`, retryError);
+        
+        // If this is a second-level retry for FormData, try a special approach
+        if (endpoint === 'initiateTranslation' && error.config?.data instanceof FormData) {
+          console.log('🔄 Attempting special FormData retry approach...');
+          
+          try {
+            // Get a new token directly from Clerk in a different way
+            const sessionToken = await window.Clerk.session.getToken();
+            
+            if (sessionToken) {
+              // Create a new request manually with careful header handling
+              const response = await fetch(error.config.url, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${sessionToken}`
+                  // Deliberately not setting Content-Type for FormData
+                },
+                body: error.config.data, // Original FormData
+                mode: 'cors',
+                credentials: 'include'
+              });
+              
+              if (response.ok) {
+                console.log('✅ Special FormData retry succeeded!');
+                const data = await response.json();
+                return { data };
+              } else {
+                throw new Error(`Special retry failed with status: ${response.status}`);
+              }
+            }
+          } catch (specialRetryError) {
+            console.error('❌ Special FormData retry approach failed:', specialRetryError);
+          }
+        }
+        
         throw retryError;
       }
     }
@@ -791,7 +885,6 @@ export const documentService = {
     }
   },
 
-  // Update the initiateTranslation method to handle timeouts better
   initiateTranslation: async (formData) => {
     const startTime = Date.now();
     console.log(`🔄 [${new Date().toISOString()}] Initiating document translation...`);
@@ -805,17 +898,32 @@ export const documentService = {
       // Force a fresh token before starting translation
       try {
         authToken = null;
-        await window.Clerk.session.getToken({ 
+        const newToken = await window.Clerk.session.getToken({ 
           skipCache: true,
           expiration: 60 * 60 
         });
+        authToken = newToken;
+        console.log("✅ Fresh token obtained for translation request");
       } catch (tokenError) {
-        console.warn("Failed to refresh token before translation:", tokenError);
+        console.warn("⚠️ Failed to refresh token before translation:", tokenError);
       }
       
+      // Debug FormData contents (helpful for troubleshooting)
+      console.log('FormData contains:');
+      for (let key of formData.keys()) {
+        const value = formData.get(key);
+        if (value instanceof File) {
+          console.log(`- ${key}: File (${value.name}, ${value.type}, ${value.size} bytes)`);
+        } else {
+          console.log(`- ${key}: ${value}`);
+        }
+      }
+      
+      // Make sure we don't interfere with FormData boundary handling
       const response = await api.post('/documents/translate', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 60000 // 60 seconds
+        // IMPORTANT: Do NOT set Content-Type for FormData
+        // Let the browser set the correct boundary parameter automatically
+        timeout: 60000 // 60 seconds timeout
       });
       
       const duration = Date.now() - startTime;
@@ -847,7 +955,50 @@ export const documentService = {
       const duration = Date.now() - startTime;
       console.error(`❌ [${new Date().toISOString()}] Translation initiation failed after ${duration}ms:`, error);
       
-      // For timeouts, try to recover immediately
+      // Log detailed information about the error
+      console.error('Error details:', {
+        message: error.message,
+        name: error.name,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data,
+        stack: error.stack
+      });
+      
+      // Handle 403 Forbidden errors (common with auth issues)
+      if (error.response && error.response.status === 403) {
+        console.log("🔐 Received 403 Forbidden, attempting one more try with token refresh");
+        
+        try {
+          // Force a completely fresh token
+          authToken = null;
+          const newToken = await window.Clerk.session.getToken({
+            skipCache: true,
+            expiration: 60 * 60
+          });
+          
+          if (newToken) {
+            console.log("✅ New token obtained after 403 error, retrying request");
+            
+            // Try one more time with the fresh token
+            const retryResponse = await api.post('/documents/translate', formData, {
+              headers: {
+                'Authorization': `Bearer ${newToken}`
+                // Still don't set Content-Type for FormData
+              },
+              timeout: 60000
+            });
+            
+            console.log("✅ Retry request succeeded!");
+            return retryResponse.data;
+          }
+        } catch (retryError) {
+          console.error("❌ Retry request also failed:", retryError);
+          // Fall through to other error handling
+        }
+      }
+      
+      // For timeouts, try to recover by finding active translations
       if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
         console.log("⏳ Upload request timed out, but the server might still be processing it");
         
@@ -879,24 +1030,33 @@ export const documentService = {
         );
       }
       
-      // Handle auth errors with special retry logic
+      // Handle auth errors (401/403) with special retry logic
       if (error.response && (error.response.status === 401 || error.response.status === 403)) {
         try {
           return await documentService._handleAuthError(
             error, 
             'initiateTranslation', 
             () => api.post('/documents/translate', formData, {
-              headers: { 'Content-Type': 'multipart/form-data' },
+              // Don't set Content-Type for FormData
               timeout: 60000
             })
           ).then(response => response.data);
         } catch (retryError) {
           // If retry fails, continue with normal error handling
-          console.error("Retry failed for translation initiation:", retryError);
+          console.error("❌ Auth error retry failed for translation initiation:", retryError);
         }
       }
       
-      throw error;
+      // Rethrow with improved error message
+      if (error.response && error.response.status === 413) {
+        throw new Error("File too large for the server to process. Please try a smaller file.");
+      } else if (error.response && error.response.status === 415) {
+        throw new Error("Unsupported file type. Please check that your file is in a supported format.");
+      } else if (error.response && error.response.data && error.response.data.error) {
+        throw new Error(error.response.data.error);
+      } else {
+        throw error; // Throw the original error
+      }
     }
   },
   
