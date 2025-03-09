@@ -13,6 +13,8 @@ import DocumentTranslationPage from './components/DocumentTranslation'
 import AccountSettings from './components/AccountSettingsPage'
 import TranslationHistoryPage from './components/TranslationHistoryPage'
 import TranslationView from './components/TranslationView'
+import TokenKeepalive from './components/TokenKeepalive'
+import TokenStatusMonitor from './components/TokenStatusMonitor'
 
 function App() {
   return (
@@ -24,6 +26,12 @@ function App() {
       </ClerkLoading>
       
       <ClerkLoaded>
+        {/* Add token management components */}
+        <SignedIn>
+          <TokenKeepalive />
+          <TokenStatusMonitor />
+        </SignedIn>
+        
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={
