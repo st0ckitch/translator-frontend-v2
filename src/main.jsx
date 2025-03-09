@@ -17,62 +17,57 @@ if (typeof window !== 'undefined') {
 // Get Clerk publishable key from environment variables
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
-// Enhanced token cache with smarter expiration
+// Simple token cache with very long expiration
 const tokenCache = {
   cache: new Map(),
-  debugMode: false, // Set to true to log cache operations
   
-  // Parse JWT to get expiration time
-  _getTokenExpiry(token) {
-    try {
-      const parts = token.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(atob(parts[1]));
-        if (payload.exp) {
-          // Convert to milliseconds and subtract 3 minutes for safety
-          return (payload.exp * 1000) - (3 * 60 * 1000);
-        }
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
-  },
-  
-  // Get token from cache
+  // Get token from cache, always return it if it exists
   get(key) {
     const cached = this.cache.get(key);
-    if (cached && Date.now() < cached.expiry) {
-      if (this.debugMode) console.log(`Cache hit for ${key}, expires in ${Math.round((cached.expiry - Date.now())/1000)}s`);
+    if (cached) {
+      console.log(`Using cached token for ${key}`);
       return cached.token;
     }
-    
-    if (this.debugMode) console.log(`Cache miss for ${key}`);
-    this.cache.delete(key);
     return null;
   },
   
-  // Store token in cache with smart expiration
-  set(key, token, ttl = 45 * 60 * 1000) { // 45 minute default
-    // Try to extract actual expiration from token
-    const tokenExpiry = this._getTokenExpiry(token);
-    const now = Date.now();
-    
-    // Use the token's expiration time if available, otherwise use TTL
-    const expiry = tokenExpiry ? Math.min(now + ttl, tokenExpiry) : now + ttl;
-    
-    if (this.debugMode) {
-      console.log(`Caching token ${key.substring(0, 10)}... for ${Math.round((expiry - now)/1000)}s`);
-      if (tokenExpiry) console.log(`Token's actual expiry detected: ${new Date(tokenExpiry).toISOString()}`);
-    }
-    
-    // Store with calculated expiry
+  // Store token with no expiration check
+  set(key, token) {
+    console.log(`Caching token for ${key}`);
     this.cache.set(key, {
       token,
-      expiry: expiry
+      timestamp: Date.now()
     });
   }
 };
+
+// Intercept fetch requests to prevent excessive token requests
+if (typeof window !== 'undefined') {
+  const originalFetch = window.fetch;
+  window.fetch = function(...args) {
+    const url = args[0].toString();
+    
+    // Block excessive token requests
+    if (url.includes('tokens?_clerk_js_version')) {
+      const now = Date.now();
+      if (!window.__lastClerkTokenRequest) {
+        window.__lastClerkTokenRequest = now;
+      } else if (now - window.__lastClerkTokenRequest < 5000) { // 5 seconds
+        console.log(`Blocking redundant clerk token request`);
+        // Return mock response
+        return Promise.resolve(new Response(JSON.stringify({
+          jwt: "cached_token_placeholder"
+        }), { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }));
+      }
+      window.__lastClerkTokenRequest = now;
+    }
+    
+    return originalFetch.apply(this, args);
+  };
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -82,18 +77,17 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         options={{
           afterSignInUrl: '/',
           afterSignUpUrl: '/',
-          // Experimental options to reduce requests
           __internal__experimental: {
-            // Disable automatic version checks
+            // Disable all automatic checks
             disableVersionCheck: true,
-            // Greatly reduce token refresh frequency
-            tokenRefreshInterval: 45 * 60 * 1000, // 45 minutes
+            disableDevCdnEndpoint: true,
+            // Maximum interval
+            tokenRefreshInterval: 24 * 60 * 60 * 1000, // 24 hours
           },
           // Custom token caching
           tokenCache: {
-            // Override default caching with our enhanced implementation
             getCached: (key) => tokenCache.get(key),
-            setCached: (key, token, ttl) => tokenCache.set(key, token, ttl || 45 * 60 * 1000)
+            setCached: (key, token) => tokenCache.set(key, token)
           }
         }}
       >
