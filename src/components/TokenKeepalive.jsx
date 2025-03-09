@@ -3,8 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useApiAuth } from '../services/api';
 import { useUser } from '@clerk/clerk-react';
 
-const TOKEN_REFRESH_INTERVAL = 30 * 1000; // 30 seconds
-const INACTIVITY_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+// Significantly reduced refresh frequency
+const TOKEN_REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
+const INACTIVITY_THRESHOLD = 15 * 60 * 1000; // 15 minutes
+const MIN_REFRESH_INTERVAL = 2 * 60 * 1000; // 2 minutes minimum between refreshes
 
 export default function TokenKeepalive() {
   const { isSignedIn } = useUser();
@@ -12,103 +14,111 @@ export default function TokenKeepalive() {
   const refreshIntervalRef = useRef(null);
   const lastActivityRef = useRef(Date.now());
   const lastRefreshRef = useRef(0);
-  const [debugInfo, setDebugInfo] = useState(null);
+  const throttleTimerRef = useRef(null);
   
-  // Prevent rapid, concurrent refreshes
+  // Rate limiting for token refreshes
   const canRefresh = () => {
     const now = Date.now();
     const timeSinceLastRefresh = now - lastRefreshRef.current;
-    
-    // Enforce minimum time between refreshes
-    return timeSinceLastRefresh > 30000; // 30 seconds
+    return timeSinceLastRefresh > MIN_REFRESH_INTERVAL;
   };
 
-  // Update last activity timestamp on user interaction
+  // Update last activity timestamp with aggressive throttling
   useEffect(() => {
+    let lastUpdateTime = 0;
+    const THROTTLE_TIME = 30000; // Only update every 30 seconds max
+    
     const updateLastActivity = () => {
-      lastActivityRef.current = Date.now();
+      const now = Date.now();
+      if (now - lastUpdateTime > THROTTLE_TIME) {
+        lastActivityRef.current = now;
+        lastUpdateTime = now;
+        
+        // Clear any pending throttle timer
+        if (throttleTimerRef.current) {
+          clearTimeout(throttleTimerRef.current);
+        }
+        
+        // Set a debounce timer
+        throttleTimerRef.current = setTimeout(() => {
+          throttleTimerRef.current = null;
+        }, THROTTLE_TIME);
+      }
     };
     
-    // Add event listeners for user activity
-    const events = ['mousedown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
+    // Minimal event listeners using passive option for performance
+    const events = ['mousedown', 'keydown'];
     events.forEach(event => {
       window.addEventListener(event, updateLastActivity, { passive: true });
     });
     
     return () => {
-      // Remove event listeners on cleanup
       events.forEach(event => {
         window.removeEventListener(event, updateLastActivity);
       });
+      
+      if (throttleTimerRef.current) {
+        clearTimeout(throttleTimerRef.current);
+      }
     };
   }, []);
   
-  // Setup token refresh during inactivity
+  // Token refresh logic with reduced frequency
   useEffect(() => {
     if (!isSignedIn) return;
     
-    // Function to check token and refresh if needed
     const checkAndRefreshToken = async () => {
       try {
-        // Check if we can refresh
+        // Skip if we've refreshed recently
         if (!canRefresh()) {
-          console.log('🛑 Skipping token refresh - too soon since last refresh');
           return;
         }
 
-        // Check current token status
+        // Check token status
         const tokenInfo = await getTokenDiagnostics();
-        setDebugInfo(tokenInfo); // Store for debugging
         
         // Calculate inactive time
         const inactiveTime = Date.now() - lastActivityRef.current;
         
-        // More conservative refresh conditions
+        // Very conservative refresh conditions - only refresh when:
+        // 1. Token is about to expire (less than 3 minutes remaining)
+        // 2. User has been inactive for a long time AND token has less than 20 minutes left
         const shouldRefresh = 
-          // Token is about to expire
-          (tokenInfo.currentToken?.remainingMinutes < 1) ||
-          // Long period of inactivity
-          (inactiveTime > INACTIVITY_THRESHOLD);
+          (tokenInfo.currentToken?.remainingMinutes < 3) || 
+          (inactiveTime > INACTIVITY_THRESHOLD && tokenInfo.currentToken?.remainingMinutes < 20);
         
         if (shouldRefresh) {
-          console.log(`🔄 Refreshing token: ${
-            tokenInfo.currentToken?.remainingMinutes < 1 
+          console.log(`Token refresh triggered: ${
+            tokenInfo.currentToken?.remainingMinutes < 3 
               ? 'Token expiring soon' 
-              : 'User inactive'
+              : 'Extended user inactivity'
           }`);
           
-          // Update last refresh timestamp
+          // Update last refresh timestamp and refresh token
           lastRefreshRef.current = Date.now();
-          
-          // Refresh token
-          const newToken = await refreshToken(true);
-          
-          if (newToken) {
-            // Update debug info after refresh
-            const updatedInfo = await getTokenDiagnostics();
-            setDebugInfo(updatedInfo);
-            
-            console.log(`✅ Token refreshed, now valid for ${updatedInfo.currentToken?.remainingMinutes} minutes`);
-          }
+          await refreshToken(true);
         }
       } catch (error) {
-        console.error('Failed to check or refresh token:', error);
+        console.error('Token refresh check failed:', error);
       }
     };
     
-    // Setup interval to check activity and refresh token
+    // Initial check with a significant delay to avoid app startup congestion
+    const initialTimer = setTimeout(() => {
+      checkAndRefreshToken();
+    }, 10000);
+    
+    // Setup interval with much less frequent checks
     refreshIntervalRef.current = setInterval(checkAndRefreshToken, TOKEN_REFRESH_INTERVAL);
     
-    // Initial check
-    checkAndRefreshToken();
-    
     return () => {
+      clearTimeout(initialTimer);
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current);
       }
     };
   }, [isSignedIn, refreshToken, getTokenDiagnostics]);
   
-  // This component doesn't render anything
+  // No visible UI
   return null;
 }

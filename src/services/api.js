@@ -168,56 +168,52 @@ export const useApiAuth = () => {
       return refreshPromise;
     }
     
+    // Rate limiting - don't refresh more than once per minute unless forced
+    const now = Date.now();
+    const timeSinceLastRefresh = now - (window.__lastTokenRefresh || 0);
+    if (!force && timeSinceLastRefresh < 60000) {
+      console.log(`Skipping token refresh - too soon (${Math.round(timeSinceLastRefresh/1000)}s since last refresh)`);
+      return authToken;
+    }
+    
     try {
       isRefreshing = true;
       console.log('🔄 Refreshing authentication token...');
       
-      // Request a token with explicit expiration (1 hour)
+      // Store last refresh time in global object for persistent rate limiting
+      window.__lastTokenRefresh = now;
+      
+      // Request a token with explicit long expiration
       refreshPromise = getToken({ 
-        skipCache: true, // Always get a fresh token
-        expiration: 60 * 60 
+        skipCache: true,
+        expiration: 60 * 60 // 1 hour
       }); 
       
       const token = await refreshPromise;
       
       if (token) {
-        // Log detailed token information
+        // Log token info
         const tokenInfo = logTokenInfo(token, "refresh");
         
-        // Store token and calculate expiry time (with 5 min buffer)
+        // Store token
         authToken = token;
         if (tokenInfo) {
-          tokenExpiryTime = Date.now() + ((tokenInfo.remaining - 300) * 1000); // 5 minute buffer
+          tokenExpiryTime = Date.now() + ((tokenInfo.remaining - 300) * 1000);
         }
         
-        console.log(`🔄 Token refreshed, valid for next ${Math.floor((tokenExpiryTime - Date.now()) / 60000)} minutes`);
+        console.log(`Token refreshed, valid for ${Math.floor((tokenExpiryTime - Date.now()) / 60000)} minutes`);
         
-        // Invalidate balance cache after token refresh
-        window.setTimeout(() => {
-          try {
-            if (typeof balanceService !== 'undefined' && 
-                balanceService && 
-                typeof balanceService.invalidateCache === 'function') {
-              balanceService.invalidateCache();
-            }
-          } catch (e) {
-            console.warn('Failed to invalidate balance cache:', e);
-          }
-        }, 0);
-        
-        // Call all queued callbacks with the new token
+        // Call queued callbacks
         refreshCallbacks.forEach(callback => callback(token));
         refreshCallbacks = [];
         
-        // Schedule the next token refresh before it expires
+        // Schedule next refresh
         scheduleTokenRefresh(token);
-      } else {
-        console.warn(`⚠️ No auth token available during refresh`);
       }
       
       return token;
     } catch (error) {
-      console.error('❌ Failed to refresh token:', error);
+      console.error('Failed to refresh token:', error);
       throw error;
     } finally {
       isRefreshing = false;
