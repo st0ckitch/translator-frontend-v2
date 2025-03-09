@@ -239,7 +239,7 @@ export const useApiAuth = () => {
         responseInterceptorId = null;
       }
       
-      // Add a new request interceptor with better token handling
+      // In your request interceptor
       requestInterceptorId = api.interceptors.request.use(async (config) => {
         try {
           // Check if we need a new token (if it's expired or not set)
@@ -247,21 +247,17 @@ export const useApiAuth = () => {
           const tokenIsValid = authToken && tokenExpiryTime && now < tokenExpiryTime;
           
           if (!tokenIsValid) {
-            // Get a fresh token with longer expiration
-            const token = await refreshToken();
+            // Get a fresh token with longer expiration AND skip cache
+            const token = await getToken({ 
+              expiration: 60 * 60,
+              skipCache: true  // Add this option to force a fresh token
+            });
             
             if (token) {
               // Token is set in refreshToken
               console.log(`🔑 New token applied to request: ${config.url}`);
             } else {
               console.warn(`⚠️ No auth token available for request: ${config.url}`);
-            }
-          } else {
-            // If token is valid but getting close to expiry (within 15 minutes instead of 10), refresh in background
-            if (tokenExpiryTime && (tokenExpiryTime - now < 15 * 60 * 1000)) {
-              console.log(`🔄 Token expiring soon (${Math.floor((tokenExpiryTime - now) / 60000)}m remaining), refreshing in background`);
-              // Don't await - refresh in background
-              refreshToken().catch(e => console.warn('Background token refresh failed:', e));
             }
           }
           
@@ -444,6 +440,23 @@ export const balanceService = {
         return balanceService._lastValidBalance;
       }
       
+      // Force a fresh token before fetching balance
+      try {
+        const freshToken = await window.Clerk.session.getToken({ 
+          skipCache: true,
+          expiration: 60 * 60 
+        });
+        
+        // Update global auth token
+        if (freshToken) {
+          authToken = freshToken;
+          // Log token details
+          logTokenInfo(freshToken, "balance-prefetch");
+        }
+      } catch (tokenError) {
+        console.warn("Could not get fresh token:", tokenError);
+      }
+      
       // First try the authenticated endpoint
       try {
         const response = await api.get('/balance/me/balance');
@@ -458,19 +471,6 @@ export const balanceService = {
         // If we get an authentication error, try the debug endpoint
         if (error.response && (error.response.status === 401 || error.response.status === 403)) {
           console.warn(`⚠️ Authentication failed (${error.response.status}), trying debug endpoint`);
-          
-          // For 403 errors, attempt to get a new token via force reload
-          // but don't try to call refreshToken directly since it's not in scope
-          if (error.response.status === 403) {
-            console.log('⚠️ Received 403 error, token may need to be refreshed');
-            
-            // Clear token to force future requests to get a fresh one
-            // This uses the global variables that are accessible here
-            authToken = null;
-            tokenExpiryTime = null;
-            
-            // Note: We don't call refreshToken() here since it's not in scope
-          }
           
           // Check if the error indicates token expiration
           if (error.response.headers['x-token-expired'] === 'true' || 
