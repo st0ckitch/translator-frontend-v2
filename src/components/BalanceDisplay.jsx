@@ -39,33 +39,85 @@ export default function BalanceDisplay() {
   const fetchBalance = useCallback(async (showToast = false) => {
     try {
       setIsRefreshing(true);
-      const balanceData = await balanceService.getBalance();
       
-      setBalance({
-        pagesBalance: balanceData.pagesBalance,
-        pagesUsed: balanceData.pagesUsed,
-        lastUsed: balanceData.lastUsed,
-        isLoading: false,
-        error: null,
-        isFromCache: balanceData.isFromCache || false,
-        isDefault: balanceData.isDefault || false
-      });
-      
-      if (showToast) {
-        if (balanceData.isFromCache) {
-          toast.info('Using cached balance. Will update when connection is restored.');
-        } else if (balanceData.isDefault) {
-          toast.warning('Unable to fetch your balance. Showing default values.');
-        } else {
-          toast.success('Balance refreshed successfully!');
+      // First try the direct API endpoint
+      try {
+        const balanceData = await balanceService.getBalance();
+        
+        setBalance({
+          pagesBalance: balanceData.pagesBalance,
+          pagesUsed: balanceData.pagesUsed,
+          lastUsed: balanceData.lastUsed,
+          isLoading: false,
+          error: null,
+          isFromCache: balanceData.isFromCache || false,
+          isDefault: balanceData.isDefault || false
+        });
+        
+        if (showToast) {
+          if (balanceData.isFromCache) {
+            toast.info('Using cached balance. Will update when connection is restored.');
+          } else if (balanceData.isDefault) {
+            toast.warning('Unable to fetch your balance. Showing default values.');
+          } else {
+            toast.success('Balance refreshed successfully!');
+          }
+        }
+        return;
+      } catch (mainError) {
+        console.warn('Error with main balance endpoint, trying fallback:', mainError);
+        
+        // If auth error (401/403), try the public fallback endpoint
+        if (mainError.response && (mainError.response.status === 401 || mainError.response.status === 403)) {
+          try {
+            // Use the public balance endpoint as fallback
+            const response = await api.get('/balance/public/balance');
+            const fallbackData = response.data;
+            
+            setBalance({
+              pagesBalance: fallbackData.pagesBalance,
+              pagesUsed: fallbackData.pagesUsed,
+              lastUsed: fallbackData.lastUsed,
+              isLoading: false,
+              error: null,
+              isFromCache: false,
+              isDefault: true,
+              authError: true
+            });
+            
+            console.log('Using fallback balance data:', fallbackData);
+            if (showToast) {
+              toast.warning('Using default balance values. Please refresh the page if this persists.');
+            }
+            return;
+          } catch (fallbackError) {
+            console.error('Fallback balance endpoint also failed:', fallbackError);
+            // Continue to the error handling below
+          }
         }
       }
-    } catch (error) {
-      console.error('Failed to fetch balance:', error);
+      
+      // If we get here, both attempts failed
+      console.error('All balance fetch attempts failed');
       setBalance(prev => ({
         ...prev,
         isLoading: false,
-        error: 'Failed to load balance'
+        error: 'Failed to load balance',
+        pagesBalance: 10, // Provide default value
+        pagesUsed: 0      // Provide default value
+      }));
+      
+      if (showToast) {
+        toast.error('Failed to refresh balance.');
+      }
+    } catch (error) {
+      console.error('Unexpected error in fetchBalance:', error);
+      setBalance(prev => ({
+        ...prev,
+        isLoading: false,
+        error: 'Failed to load balance',
+        pagesBalance: 10, // Provide default value
+        pagesUsed: 0      // Provide default value
       }));
       
       if (showToast) {
@@ -75,7 +127,7 @@ export default function BalanceDisplay() {
       setIsRefreshing(false);
     }
   }, []);
-
+  
   useEffect(() => {
     fetchBalance();
     

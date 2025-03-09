@@ -26,67 +26,96 @@ function TokenManagement() {
   const initRef = useRef(false);
   const [tokenComponentsEnabled, setTokenComponentsEnabled] = useState(false);
   const lastTokenCheckRef = useRef(0);
+  const [initialTokenFetched, setInitialTokenFetched] = useState(false);
+
+  // Make the initial token fetch available globally for components that need it
+  useEffect(() => {
+    if (!window.hasOwnProperty('__initialTokenPromise')) {
+      window.__initialTokenPromise = null;
+    }
+  }, []);
 
   // Manual initial token fetch to avoid multiple components requesting tokens
   useEffect(() => {
     if (isSignedIn && !initRef.current) {
       initRef.current = true;
       
-      // Wait 3 seconds after app load before doing anything
-      const timer = setTimeout(async () => {
-        try {
-          // Fetch a token with 1 hour expiration request
-          const token = await getToken({ expiration: 60 * 60 });
-          if (token) {
-            console.log('Initial token fetched successfully');
-            // Parse the token to see actual expiration
-            try {
-              const parts = token.split('.');
-              if (parts.length === 3) {
-                const payload = JSON.parse(atob(parts[1]));
-                if (payload.exp) {
-                  const expiresAt = new Date(payload.exp * 1000);
-                  console.log(`Token expires at: ${expiresAt.toISOString()}`);
-                  // Calculate time until we need to enable token management
-                  const timeUntilRefresh = Math.max(
-                    (payload.exp * 1000) - Date.now() - 10000, // 10 seconds before expiry
-                    20000 // At least 20 seconds later
-                  );
-                  // Schedule token management to start shortly before token expires
-                  setTimeout(() => {
-                    console.log('Enabling token management components');
-                    setTokenComponentsEnabled(true);
-                  }, timeUntilRefresh);
-                  return;
+      // Create a promise for the initial token fetch that other components can await
+      if (!window.__initialTokenPromise) {
+        window.__initialTokenPromise = (async () => {
+          try {
+            // Fetch a token with 1 hour expiration request immediately
+            console.log('Fetching initial token...');
+            const token = await getToken({ 
+              skipCache: true,
+              expiration: 60 * 60 
+            });
+            
+            if (token) {
+              console.log('Initial token fetched successfully');
+              setInitialTokenFetched(true);
+              
+              // Parse the token to see actual expiration
+              try {
+                const parts = token.split('.');
+                if (parts.length === 3) {
+                  const payload = JSON.parse(atob(parts[1]));
+                  if (payload.exp) {
+                    const expiresAt = new Date(payload.exp * 1000);
+                    console.log(`Token expires at: ${expiresAt.toISOString()}`);
+                    
+                    // Calculate time until we need to enable token management
+                    const timeUntilRefresh = Math.max(
+                      (payload.exp * 1000) - Date.now() - 10000, // 10 seconds before expiry
+                      5000 // Start sooner (5 seconds) to prevent auth issues
+                    );
+                    
+                    // Schedule token management to start shortly before token expires
+                    setTimeout(() => {
+                      console.log('Enabling token management components');
+                      setTokenComponentsEnabled(true);
+                    }, timeUntilRefresh);
+                    
+                    return token;
+                  }
                 }
+              } catch (e) {
+                console.warn('Error parsing token:', e);
               }
-            } catch (e) {
-              console.warn('Error parsing token:', e);
+              
+              return token;
             }
+          } catch (e) {
+            console.error('Error fetching initial token:', e);
           }
-        } catch (e) {
-          console.error('Error fetching initial token:', e);
-        }
-        
-        // If we failed to get a token or parse it, enable after 30 seconds
-        setTimeout(() => {
-          console.log('Enabling token management as fallback');
+          
+          // If we failed to get a token or parse it, enable management right away
+          console.log('Enabling token management immediately due to fetch issues');
           setTokenComponentsEnabled(true);
-        }, 30000);
-      }, 3000);
+          return null;
+        })();
+      }
       
-      return () => clearTimeout(timer);
+      // Also set a fallback timer in case token fetching fails completely
+      const fallbackTimer = setTimeout(() => {
+        if (!initialTokenFetched) {
+          console.log('Enabling token management as fallback (no token fetched)');
+          setTokenComponentsEnabled(true);
+        }
+      }, 8000); // Shorter fallback time (8 seconds)
+      
+      return () => clearTimeout(fallbackTimer);
     }
-  }, [isSignedIn, getToken]);
+  }, [isSignedIn, getToken, initialTokenFetched]);
   
-  // Only render actual token management when explicitly enabled
-  // and after initial delay to prevent startup congestion
-  if (!isSignedIn || !tokenComponentsEnabled) return null;
+  // Render token management components
+  // Note: Now we render TokenStatusMonitor immediately for better error handling
+  if (!isSignedIn) return null;
   
   return (
     <>
-      <TokenKeepalive />
       <TokenStatusMonitor />
+      {tokenComponentsEnabled && <TokenKeepalive />}
     </>
   );
 }

@@ -224,7 +224,27 @@ export const useApiAuth = () => {
         expiration: 60 * 60 // Request 1 hour token (may not be honored)
       }); 
       
-      const token = await refreshPromise;
+      // Add timeout to token fetch
+      const tokenPromise = Promise.race([
+        refreshPromise,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Token refresh timed out')), 8000)
+        )
+      ]);
+      
+      let token;
+      try {
+        token = await tokenPromise;
+      } catch (tokenError) {
+        console.warn('Token refresh error or timeout:', tokenError);
+        
+        // If we have an existing token, use it instead of failing
+        if (authToken) {
+          console.log('Using existing token despite refresh failure');
+          return authToken;
+        }
+        throw tokenError;
+      }
       
       if (token) {
         // Log token information
@@ -251,11 +271,25 @@ export const useApiAuth = () => {
         scheduleTokenRefresh(token);
       } else {
         console.warn('No token returned from refresh attempt');
+        
+        // If we have an existing token, use it instead of failing
+        if (authToken) {
+          console.log('Using existing token due to empty refresh result');
+          return authToken;
+        }
       }
       
       return token;
     } catch (error) {
       console.error('Failed to refresh token:', error);
+      
+      // If we have an existing token and this isn't a forced refresh,
+      // return the existing token instead of failing
+      if (authToken && !force) {
+        console.log('Using existing token despite refresh error');
+        return authToken;
+      }
+      
       throw error;
     } finally {
       isRefreshing = false;
