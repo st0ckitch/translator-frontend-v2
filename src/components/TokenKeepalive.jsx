@@ -1,4 +1,4 @@
-// src/components/TokenKeepalive.jsx - Optimized token management
+// src/components/TokenKeepalive.jsx
 import { useEffect, useRef, useState } from 'react';
 import { useApiAuth } from '../services/api';
 import { useUser } from '@clerk/clerk-react';
@@ -15,6 +15,7 @@ export default function TokenKeepalive() {
   const lastActivityRef = useRef(Date.now());
   const lastRefreshRef = useRef(0);
   const throttleTimerRef = useRef(null);
+  const [debugInfo, setDebugInfo] = useState(null);
   
   // Rate limiting for token refreshes
   const canRefresh = () => {
@@ -76,6 +77,7 @@ export default function TokenKeepalive() {
 
         // Check token status
         const tokenInfo = await getTokenDiagnostics();
+        setDebugInfo(tokenInfo);
         
         // Calculate inactive time
         const inactiveTime = Date.now() - lastActivityRef.current;

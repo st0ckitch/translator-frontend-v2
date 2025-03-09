@@ -9,7 +9,7 @@ import {
   RedirectToSignIn,
   useUser 
 } from '@clerk/clerk-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Layout from './components/Layout'
 import DocumentTranslationPage from './components/DocumentTranslation'
 import AccountSettings from './components/AccountSettingsPage'

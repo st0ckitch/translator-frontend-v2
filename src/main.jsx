@@ -17,6 +17,7 @@ if (typeof window !== 'undefined') {
 // Get Clerk publishable key from environment variables
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
+// Enhanced token cache with smarter expiration
 const tokenCache = {
   cache: new Map(),
   debugMode: false, // Set to true to log cache operations
@@ -73,29 +74,32 @@ const tokenCache = {
   }
 };
 
-// ClerkProvider with optimized settings
-// In the ReactDOM.createRoot render section, replace the ClerkProvider with:
-
-<ClerkProvider 
-  publishableKey={clerkPubKey}
-  options={{
-    afterSignInUrl: '/',
-    afterSignUpUrl: '/',
-    // Experimental options to reduce requests
-    __internal__experimental: {
-      // Disable automatic version checks
-      disableVersionCheck: true,
-      // Greatly reduce token refresh frequency
-      tokenRefreshInterval: 45 * 60 * 1000, // 45 minutes
-    },
-    // Custom token caching
-    tokenCache: {
-      // Override default caching with our enhanced implementation
-      getCached: (key) => tokenCache.get(key),
-      setCached: (key, token, ttl) => tokenCache.set(key, token, ttl || 45 * 60 * 1000)
-    }
-  }}
->
-  <Toaster position="top-right" richColors closeButton />
-  <App />
-</ClerkProvider>
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <ClerkProvider 
+        publishableKey={clerkPubKey}
+        options={{
+          afterSignInUrl: '/',
+          afterSignUpUrl: '/',
+          // Experimental options to reduce requests
+          __internal__experimental: {
+            // Disable automatic version checks
+            disableVersionCheck: true,
+            // Greatly reduce token refresh frequency
+            tokenRefreshInterval: 45 * 60 * 1000, // 45 minutes
+          },
+          // Custom token caching
+          tokenCache: {
+            // Override default caching with our enhanced implementation
+            getCached: (key) => tokenCache.get(key),
+            setCached: (key, token, ttl) => tokenCache.set(key, token, ttl || 45 * 60 * 1000)
+          }
+        }}
+      >
+        <Toaster position="top-right" richColors closeButton />
+        <App />
+      </ClerkProvider>
+    </BrowserRouter>
+  </React.StrictMode>,
+)
