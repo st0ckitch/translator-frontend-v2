@@ -1,19 +1,28 @@
-// src/components/TokenKeepalive.jsx - A component to maintain token freshness during idle periods
+// src/components/TokenKeepalive.jsx - Optimized token management
 import { useEffect, useRef, useState } from 'react';
 import { useApiAuth } from '../services/api';
 import { useUser } from '@clerk/clerk-react';
 
-const TOKEN_REFRESH_INTERVAL = 4 * 60 * 1000; // 4 minutes
-const INACTIVITY_CHECK_INTERVAL = 60 * 1000; // 1 minute
+const TOKEN_REFRESH_INTERVAL = 30 * 1000; // 30 seconds
+const INACTIVITY_THRESHOLD = 5 * 60 * 1000; // 5 minutes
 
 export default function TokenKeepalive() {
   const { isSignedIn } = useUser();
   const { refreshToken, getTokenDiagnostics } = useApiAuth();
   const refreshIntervalRef = useRef(null);
   const lastActivityRef = useRef(Date.now());
-  const checkActivityIntervalRef = useRef(null);
+  const lastRefreshRef = useRef(0);
   const [debugInfo, setDebugInfo] = useState(null);
   
+  // Prevent rapid, concurrent refreshes
+  const canRefresh = () => {
+    const now = Date.now();
+    const timeSinceLastRefresh = now - lastRefreshRef.current;
+    
+    // Enforce minimum time between refreshes
+    return timeSinceLastRefresh > 30000; // 30 seconds
+  };
+
   // Update last activity timestamp on user interaction
   useEffect(() => {
     const updateLastActivity = () => {
@@ -41,34 +50,46 @@ export default function TokenKeepalive() {
     // Function to check token and refresh if needed
     const checkAndRefreshToken = async () => {
       try {
+        // Check if we can refresh
+        if (!canRefresh()) {
+          console.log('🛑 Skipping token refresh - too soon since last refresh');
+          return;
+        }
+
         // Check current token status
         const tokenInfo = await getTokenDiagnostics();
         setDebugInfo(tokenInfo); // Store for debugging
         
         // Calculate inactive time
         const inactiveTime = Date.now() - lastActivityRef.current;
-        const inactiveMinutes = Math.round(inactiveTime / 60000);
         
-        // If token is expiring soon (less than 10 minutes) or user has been inactive
-        // for more than 5 minutes, refresh the token
-        if (
-          (tokenInfo.currentToken?.remainingMinutes < 10) || 
-          (inactiveMinutes >= 5)
-        ) {
+        // More conservative refresh conditions
+        const shouldRefresh = 
+          // Token is about to expire
+          (tokenInfo.currentToken?.remainingMinutes < 1) ||
+          // Long period of inactivity
+          (inactiveTime > INACTIVITY_THRESHOLD);
+        
+        if (shouldRefresh) {
           console.log(`🔄 Refreshing token: ${
-            tokenInfo.currentToken?.remainingMinutes < 10 
+            tokenInfo.currentToken?.remainingMinutes < 1 
               ? 'Token expiring soon' 
               : 'User inactive'
           }`);
           
-          // Refresh token to maintain session
-          await refreshToken(true);
+          // Update last refresh timestamp
+          lastRefreshRef.current = Date.now();
           
-          // Update debug info after refresh
-          const updatedInfo = await getTokenDiagnostics();
-          setDebugInfo(updatedInfo);
+          // Refresh token
+          const newToken = await refreshToken(true);
           
-          console.log(`✅ Token refreshed, now valid for ${updatedInfo.currentToken?.remainingMinutes} minutes`);
+          if (newToken) {
+            // Update debug info after refresh
+            const updatedInfo = await getTokenDiagnostics();
+            setDebugInfo(updatedInfo);
+            
+            console.log(`✅ Token refreshed, now valid for ${updatedInfo.currentToken?.remainingMinutes} minutes`);
+          }
         }
       } catch (error) {
         console.error('Failed to check or refresh token:', error);
@@ -76,16 +97,14 @@ export default function TokenKeepalive() {
     };
     
     // Setup interval to check activity and refresh token
-    checkActivityIntervalRef.current = setInterval(() => {
-      checkAndRefreshToken();
-    }, TOKEN_REFRESH_INTERVAL);
+    refreshIntervalRef.current = setInterval(checkAndRefreshToken, TOKEN_REFRESH_INTERVAL);
     
     // Initial check
     checkAndRefreshToken();
     
     return () => {
-      if (checkActivityIntervalRef.current) {
-        clearInterval(checkActivityIntervalRef.current);
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
       }
     };
   }, [isSignedIn, refreshToken, getTokenDiagnostics]);
