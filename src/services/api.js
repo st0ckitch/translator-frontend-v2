@@ -155,11 +155,20 @@ export const useApiAuth = () => {
         
         console.log(`🔄 Token refreshed, valid for next ${Math.floor((tokenExpiryTime - Date.now()) / 60000)} minutes`);
         
+        // Use setTimeout to safely defer balance cache invalidation to avoid circular reference issues
+        setTimeout(() => {
+          try {
+            if (typeof balanceService !== 'undefined' && balanceService.invalidateCache) {
+              balanceService.invalidateCache();
+            }
+          } catch (e) {
+            console.warn('Failed to invalidate balance cache:', e);
+          }
+        }, 0);
+        
         // Call all queued callbacks with the new token
         refreshCallbacks.forEach(callback => callback(token));
         refreshCallbacks = [];
-      } else {
-        console.warn(`⚠️ No auth token available during refresh`);
       }
       
       return token;
@@ -242,8 +251,8 @@ export const useApiAuth = () => {
               console.warn(`⚠️ No auth token available for request: ${config.url}`);
             }
           } else {
-            // If token is valid but getting close to expiry (within 10 minutes), refresh in background
-            if (tokenExpiryTime && (tokenExpiryTime - now < 10 * 60 * 1000)) {
+            // If token is valid but getting close to expiry (within 15 minutes instead of 10), refresh in background
+            if (tokenExpiryTime && (tokenExpiryTime - now < 15 * 60 * 1000)) {
               console.log(`🔄 Token expiring soon (${Math.floor((tokenExpiryTime - now) / 60000)}m remaining), refreshing in background`);
               // Don't await - refresh in background
               refreshToken().catch(e => console.warn('Background token refresh failed:', e));
@@ -261,6 +270,7 @@ export const useApiAuth = () => {
       });
       
       // Add a response interceptor to handle token expiration
+      // Add a response interceptor to handle token expiration
       responseInterceptorId = api.interceptors.response.use(
         response => {
           // Check for token expiration warning headers
@@ -273,9 +283,8 @@ export const useApiAuth = () => {
         async error => {
           const originalRequest = error.config;
           
-          // Only handle 401 errors for non-refresh requests
-          if (error.response?.status === 401 && 
-              error.response?.data?.tokenExpired && 
+          // Handle both 401 and 403 errors for auth issues
+          if ((error.response?.status === 401 || error.response?.status === 403) && 
               !originalRequest._retry) {
             
             // Mark this request as retried
@@ -285,10 +294,15 @@ export const useApiAuth = () => {
               // If we're already refreshing, wait for that to complete
               let token;
               if (isRefreshing) {
+                console.log('🔄 Token refresh already in progress, waiting...');
                 token = await new Promise((resolve) => {
                   refreshCallbacks.push(resolve);
                 });
               } else {
+                console.log('🔄 Refreshing token due to auth error...');
+                // Force clear the existing token
+                authToken = null;
+                tokenExpiryTime = null;
                 token = await refreshToken();
               }
               
@@ -435,7 +449,57 @@ export const balanceService = {
       } catch (error) {
         // If we get an authentication error, try the debug endpoint
         if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-          console.warn('⚠️ Authentication failed, trying debug endpoint');
+          console.warn(`⚠️ Authentication failed (${error.response.status}), trying debug endpoint`);
+          
+          // For 403 errors, try refreshing the token immediately
+          if (error.response.status === 403) {
+            try {
+              console.log('🔄 Force refreshing token due to 403 error');
+              // Force clear the token to ensure a fresh one
+              authToken = null;
+              tokenExpiryTime = null;
+              
+              // Wait for token refresh
+              await refreshToken();
+              
+              // Retry the original request
+              try {
+                console.log('🔄 Retrying balance request after token refresh');
+                const retryResponse = await api.get('/balance/me/balance');
+                console.log("✅ Balance fetch retry succeeded:", retryResponse.data);
+                
+                // Update cache
+                balanceService._lastValidBalance = retryResponse.data;
+                balanceService._lastFetchTime = now;
+                
+                return retryResponse.data;
+              } catch (retryError) {
+                console.error('❌ Balance fetch retry failed:', retryError);
+                // Continue with fallback flow
+              }
+            } catch (refreshError) {
+              console.error('❌ Token refresh failed during balance fetch:', refreshError);
+              // Continue with fallback flow
+              
+              // Check if the error indicates the user is not logged in
+              if (refreshError.message?.includes('not logged in') || 
+                  refreshError.message?.includes('session not found')) {
+                console.warn('⚠️ User appears to be logged out - may need to redirect to login');
+              }
+              
+              // Log detailed error information
+              console.debug('Token refresh error details:', {
+                name: refreshError.name,
+                message: refreshError.message,
+                stack: refreshError.stack?.substring(0, 200), // Truncate stack for readability
+                tokenState: {
+                  authToken: !!authToken,
+                  tokenExpiryTime: tokenExpiryTime ? new Date(tokenExpiryTime).toISOString() : null,
+                  isRefreshing
+                }
+              });
+            }
+          }
           
           // Check if the error indicates token expiration
           if (error.response.headers['x-token-expired'] === 'true' || 
