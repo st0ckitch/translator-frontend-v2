@@ -451,54 +451,17 @@ export const balanceService = {
         if (error.response && (error.response.status === 401 || error.response.status === 403)) {
           console.warn(`⚠️ Authentication failed (${error.response.status}), trying debug endpoint`);
           
-          // For 403 errors, try refreshing the token immediately
+          // For 403 errors, attempt to get a new token via force reload
+          // but don't try to call refreshToken directly since it's not in scope
           if (error.response.status === 403) {
-            try {
-              console.log('🔄 Force refreshing token due to 403 error');
-              // Force clear the token to ensure a fresh one
-              authToken = null;
-              tokenExpiryTime = null;
-              
-              // Wait for token refresh
-              await refreshToken();
-              
-              // Retry the original request
-              try {
-                console.log('🔄 Retrying balance request after token refresh');
-                const retryResponse = await api.get('/balance/me/balance');
-                console.log("✅ Balance fetch retry succeeded:", retryResponse.data);
-                
-                // Update cache
-                balanceService._lastValidBalance = retryResponse.data;
-                balanceService._lastFetchTime = now;
-                
-                return retryResponse.data;
-              } catch (retryError) {
-                console.error('❌ Balance fetch retry failed:', retryError);
-                // Continue with fallback flow
-              }
-            } catch (refreshError) {
-              console.error('❌ Token refresh failed during balance fetch:', refreshError);
-              // Continue with fallback flow
-              
-              // Check if the error indicates the user is not logged in
-              if (refreshError.message?.includes('not logged in') || 
-                  refreshError.message?.includes('session not found')) {
-                console.warn('⚠️ User appears to be logged out - may need to redirect to login');
-              }
-              
-              // Log detailed error information
-              console.debug('Token refresh error details:', {
-                name: refreshError.name,
-                message: refreshError.message,
-                stack: refreshError.stack?.substring(0, 200), // Truncate stack for readability
-                tokenState: {
-                  authToken: !!authToken,
-                  tokenExpiryTime: tokenExpiryTime ? new Date(tokenExpiryTime).toISOString() : null,
-                  isRefreshing
-                }
-              });
-            }
+            console.log('⚠️ Received 403 error, token may need to be refreshed');
+            
+            // Clear token to force future requests to get a fresh one
+            // This uses the global variables that are accessible here
+            authToken = null;
+            tokenExpiryTime = null;
+            
+            // Note: We don't call refreshToken() here since it's not in scope
           }
           
           // Check if the error indicates token expiration
