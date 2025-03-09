@@ -68,12 +68,7 @@ const getTokenTimeRemaining = (token) => {
 };
 
 // Function to check if token needs refresh (expiring soon or already expired)
-const shouldRefreshToken = (token) => {
-  if (!token) return true;
-  
-  const timeRemaining = getTokenTimeRemaining(token) * 1000; // Convert to ms
-  return timeRemaining < TOKEN_REFRESH_BUFFER;
-};
+const shouldRefreshToken = () => false;
 
 // Function to log token information
 const logTokenInfo = (token, source = "unknown") => {
