@@ -158,52 +158,47 @@ export const useApiAuth = () => {
   
   // Function to refresh the token
   const refreshToken = useCallback(async (force = false) => {
+    // Extremely aggressive rate limiting - only allow once per 30 minutes
+    const now = Date.now();
+    if (!window.__lastTokenRefresh) {
+      window.__lastTokenRefresh = 0;
+    }
+    
+    const timeSinceLastRefresh = now - window.__lastTokenRefresh;
+    if (!force && timeSinceLastRefresh < 30 * 60 * 1000) { // 30 minutes
+      console.log(`TOKEN REFRESH BLOCKED - last refresh was ${Math.round(timeSinceLastRefresh/1000)}s ago`);
+      return authToken; // Return existing token
+    }
+    
     // If already refreshing, return the existing promise
     if (isRefreshing && !force) {
       return refreshPromise;
     }
     
-    // Rate limiting - don't refresh more than once per minute unless forced
-    const now = Date.now();
-    const timeSinceLastRefresh = now - (window.__lastTokenRefresh || 0);
-    if (!force && timeSinceLastRefresh < 60000) {
-      console.log(`Skipping token refresh - too soon (${Math.round(timeSinceLastRefresh/1000)}s since last refresh)`);
-      return authToken;
-    }
-    
     try {
       isRefreshing = true;
-      console.log('🔄 Refreshing authentication token...');
+      console.log('Performing manual token refresh...');
       
-      // Store last refresh time in global object for persistent rate limiting
       window.__lastTokenRefresh = now;
       
-      // Request a token with explicit long expiration
+      // Get token directly from Clerk with long expiration
       refreshPromise = getToken({ 
-        skipCache: true,
-        expiration: 60 * 60 // 1 hour
-      }); 
+        skipCache: force,
+        expiration: 60 * 24 // 24 hours validity
+      });
       
       const token = await refreshPromise;
       
       if (token) {
-        // Log token info
-        const tokenInfo = logTokenInfo(token, "refresh");
-        
-        // Store token
+        // Override tokenExpiryTime to be far in the future
         authToken = token;
-        if (tokenInfo) {
-          tokenExpiryTime = Date.now() + ((tokenInfo.remaining - 300) * 1000);
-        }
+        tokenExpiryTime = Date.now() + (FORCE_TOKEN_VALID_MINUTES * 60 * 1000);
         
-        console.log(`Token refreshed, valid for ${Math.floor((tokenExpiryTime - Date.now()) / 60000)} minutes`);
+        console.log(`Token manually refreshed, forcing validity for ${FORCE_TOKEN_VALID_MINUTES} minutes`);
         
-        // Call queued callbacks
+        // Process callbacks
         refreshCallbacks.forEach(callback => callback(token));
         refreshCallbacks = [];
-        
-        // Schedule next refresh
-        scheduleTokenRefresh(token);
       }
       
       return token;
