@@ -7,7 +7,8 @@ import {
   ClerkLoaded, 
   ClerkLoading, 
   RedirectToSignIn,
-  useUser 
+  useUser,
+  useAuth
 } from '@clerk/clerk-react'
 import { useState, useEffect, useRef } from 'react'
 import Layout from './components/Layout'
@@ -18,12 +19,77 @@ import TranslationView from './components/TranslationView'
 import TokenKeepalive from './components/TokenKeepalive'
 import TokenStatusMonitor from './components/TokenStatusMonitor'
 
-// Consolidated Token Management Component
+// Optimized Token Management Component with rate limiting
 function TokenManagement() {
-  // This component is completely disabled to prevent any token requests
-  return null;
-}
+  const { isSignedIn } = useUser();
+  const { getToken } = useAuth();
+  const initRef = useRef(false);
+  const [tokenComponentsEnabled, setTokenComponentsEnabled] = useState(false);
+  const lastTokenCheckRef = useRef(0);
 
+  // Manual initial token fetch to avoid multiple components requesting tokens
+  useEffect(() => {
+    if (isSignedIn && !initRef.current) {
+      initRef.current = true;
+      
+      // Wait 3 seconds after app load before doing anything
+      const timer = setTimeout(async () => {
+        try {
+          // Fetch a token with 1 hour expiration request
+          const token = await getToken({ expiration: 60 * 60 });
+          if (token) {
+            console.log('Initial token fetched successfully');
+            // Parse the token to see actual expiration
+            try {
+              const parts = token.split('.');
+              if (parts.length === 3) {
+                const payload = JSON.parse(atob(parts[1]));
+                if (payload.exp) {
+                  const expiresAt = new Date(payload.exp * 1000);
+                  console.log(`Token expires at: ${expiresAt.toISOString()}`);
+                  // Calculate time until we need to enable token management
+                  const timeUntilRefresh = Math.max(
+                    (payload.exp * 1000) - Date.now() - 10000, // 10 seconds before expiry
+                    20000 // At least 20 seconds later
+                  );
+                  // Schedule token management to start shortly before token expires
+                  setTimeout(() => {
+                    console.log('Enabling token management components');
+                    setTokenComponentsEnabled(true);
+                  }, timeUntilRefresh);
+                  return;
+                }
+              }
+            } catch (e) {
+              console.warn('Error parsing token:', e);
+            }
+          }
+        } catch (e) {
+          console.error('Error fetching initial token:', e);
+        }
+        
+        // If we failed to get a token or parse it, enable after 30 seconds
+        setTimeout(() => {
+          console.log('Enabling token management as fallback');
+          setTokenComponentsEnabled(true);
+        }, 30000);
+      }, 3000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isSignedIn, getToken]);
+  
+  // Only render actual token management when explicitly enabled
+  // and after initial delay to prevent startup congestion
+  if (!isSignedIn || !tokenComponentsEnabled) return null;
+  
+  return (
+    <>
+      <TokenKeepalive />
+      <TokenStatusMonitor />
+    </>
+  );
+}
 
 function App() {
   return (
@@ -35,7 +101,7 @@ function App() {
       </ClerkLoading>
       
       <ClerkLoaded>
-        {/* Consolidated and delayed token management */}
+        {/* Optimized token management */}
         <SignedIn>
           <TokenManagement />
         </SignedIn>
