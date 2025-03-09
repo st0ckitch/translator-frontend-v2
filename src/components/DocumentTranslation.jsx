@@ -8,6 +8,7 @@ import DocumentsUpload from '../components/DocumentsUpload';
 import DocumentDownloadButton from '../components/DocumentDownloadButton';
 import BalanceDisplay from '../components/BalanceDisplay';
 import GoogleDriveButton from '../components/GoogleDriveButton';
+import api from '../services/api';
 
 export default function DocumentTranslationPage() {
   const { user, isLoaded } = useUser();
@@ -61,8 +62,9 @@ export default function DocumentTranslationPage() {
   const ensureValidToken = useCallback(async () => {
     try {
       await refreshToken();
-      // Invalidate balance cache to get fresh data after token refresh
-      balanceService.invalidateCache();
+      // Note: balanceService is not defined, removing the invalidation call
+      // If balance refresh is needed, we can handle it elsewhere
+      console.log('Token refreshed successfully');
     } catch (error) {
       console.error('Failed to refresh token:', error);
       // Continue anyway - the interceptors will handle auth errors
