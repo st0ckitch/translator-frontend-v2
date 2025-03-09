@@ -155,10 +155,14 @@ export const useApiAuth = () => {
         
         console.log(`🔄 Token refreshed, valid for next ${Math.floor((tokenExpiryTime - Date.now()) / 60000)} minutes`);
         
-        // Use setTimeout to safely defer balance cache invalidation to avoid circular reference issues
-        setTimeout(() => {
+        // Remove the direct reference to balanceService.invalidateCache()
+        // Instead, use a function that can be called later when balanceService is defined
+        window.setTimeout(() => {
           try {
-            if (typeof balanceService !== 'undefined' && balanceService.invalidateCache) {
+            // Using a safe way to check and call the method if it exists
+            if (typeof balanceService !== 'undefined' && 
+                balanceService && 
+                typeof balanceService.invalidateCache === 'function') {
               balanceService.invalidateCache();
             }
           } catch (e) {
@@ -169,6 +173,8 @@ export const useApiAuth = () => {
         // Call all queued callbacks with the new token
         refreshCallbacks.forEach(callback => callback(token));
         refreshCallbacks = [];
+      } else {
+        console.warn(`⚠️ No auth token available during refresh`);
       }
       
       return token;
@@ -270,49 +276,51 @@ export const useApiAuth = () => {
       });
       
       // Add a response interceptor to handle token expiration
-      // Add a response interceptor to handle token expiration
       responseInterceptorId = api.interceptors.response.use(
         response => {
           // Check for token expiration warning headers
           if (response.headers['x-token-expiring-soon'] === 'true') {
             console.log('⚠️ Token is expiring soon, refreshing...');
-            refreshToken();
+            // Clear token to force refresh
+            authToken = null;
+            tokenExpiryTime = null;
           }
           return response;
         },
         async error => {
           const originalRequest = error.config;
           
-          // Handle both 401 and 403 errors for auth issues
-          if ((error.response?.status === 401 || error.response?.status === 403) && 
-              !originalRequest._retry) {
-            
-            // Mark this request as retried
+          // Don't retry requests that have already been retried or don't have a config
+          if (!originalRequest || originalRequest._retry) {
+            return Promise.reject(error);
+          }
+          
+          // Handle 401 and 403 errors (authentication issues)
+          if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+            // Mark this request as retried to prevent infinite loops
             originalRequest._retry = true;
             
+            console.warn(`⚠️ Auth error (${error.response.status}) for ${originalRequest.url}, refreshing token...`);
+            
             try {
-              // If we're already refreshing, wait for that to complete
-              let token;
-              if (isRefreshing) {
-                console.log('🔄 Token refresh already in progress, waiting...');
-                token = await new Promise((resolve) => {
-                  refreshCallbacks.push(resolve);
-                });
-              } else {
-                console.log('🔄 Refreshing token due to auth error...');
-                // Force clear the existing token
-                authToken = null;
-                tokenExpiryTime = null;
-                token = await refreshToken();
-              }
+              // Clear existing token to force a new one
+              authToken = null;
+              tokenExpiryTime = null;
               
-              // Retry the original request with the new token
-              if (token) {
-                originalRequest.headers['Authorization'] = `Bearer ${token}`;
+              // Get new token - directly from Clerk to avoid circular references
+              const newToken = await window.Clerk.session.getToken({ expiration: 60 * 60 });
+              
+              if (newToken) {
+                console.log("✅ New token obtained, retrying request");
+                // Update for future requests
+                authToken = newToken;
+                
+                // Update the current request and retry
+                originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
                 return api(originalRequest);
               }
             } catch (refreshError) {
-              console.error('❌ Token refresh failed during response handling:', refreshError);
+              console.error('❌ Failed to refresh token:', refreshError);
             }
           }
           
@@ -772,27 +780,59 @@ export const documentService = {
   },
   
   checkTranslationStatus: async (processId) => {
-    try {
-      // Use a longer timeout for status checks
-      const response = await api.get(`/documents/status/${processId}`, {
-        timeout: 15000 // 15 seconds timeout
-      });
-      return response.data;
-    } catch (error) {
-      // For network errors or timeouts, don't immediately fail
-      // Instead return a "pending" status to allow continued polling
-      if (error.code === 'ECONNABORTED' || error.message.includes('timeout') || !error.response) {
-        console.warn(`Network issue while checking status for ${processId} - assuming still pending`);
-        return {
-          processId: processId,
-          status: 'pending',
-          progress: 0,
-          currentPage: 0,
-          totalPages: 0,
-          isNetworkEstimate: true
-        };
+    let retryCount = 0;
+    const maxRetries = 2;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        // Use a longer timeout for status checks
+        const response = await api.get(`/documents/status/${processId}`, {
+          timeout: 15000 // 15 seconds timeout
+        });
+        
+        // Store the successful status for fallback
+        documentService._updateLastKnownStatus(processId, response.data);
+        
+        return response.data;
+      } catch (error) {
+        // For network errors or timeouts, don't immediately fail
+        if (error.code === 'ECONNABORTED' || error.message.includes('timeout') || !error.response) {
+          console.warn(`Network issue while checking status for ${processId} - assuming still pending`);
+          return {
+            processId: processId,
+            status: 'pending',
+            progress: 0,
+            currentPage: 0,
+            totalPages: 0,
+            isNetworkEstimate: true
+          };
+        }
+        
+        // Handle auth errors with special retry logic
+        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+          if (retryCount < maxRetries) {
+            retryCount++;
+            console.log(`Auth error in status check, retry attempt ${retryCount}/${maxRetries}`);
+            
+            // Force token refresh before retry
+            try {
+              authToken = null;
+              tokenExpiryTime = null;
+              // Wait 500ms before retry
+              await new Promise(resolve => setTimeout(resolve, 500));
+              continue;
+            } catch (e) {
+              console.warn('Error during status check retry wait:', e);
+            }
+          } else {
+            // We've exceeded retries, return fallback status
+            console.warn(`Auth errors persist after ${maxRetries} retries, using fallback status`);
+            return documentService._createFallbackStatus(processId);
+          }
+        }
+        
+        throw error; // For other errors, propagate normally
       }
-      throw error;
     }
   },
   
