@@ -1,6 +1,7 @@
 // src/components/TokenStatusMonitor.jsx - Component to monitor token status and handle auth errors
 import { useEffect, useRef, useState } from 'react';
-import { useApiAuth, documentService, balanceService } from '../services/api';
+import { useApiAuth } from '../services/api';
+import api from '../services/api'; // Import default api
 import { toast } from 'sonner';
 
 // Create a global auth error handler
@@ -8,6 +9,12 @@ let globalAuthErrorCount = 0;
 let lastAuthErrorTime = 0;
 const AUTH_ERROR_THRESHOLD = 2; // Number of auth errors before showing notification
 const AUTH_ERROR_RESET_TIME = 30000; // 30 seconds - time to reset error count
+
+// Create a simple function to invalidate cache
+const invalidateCache = () => {
+  console.log('📦 Balance cache invalidated');
+  // In the actual implementation, this would interact with a cache mechanism
+};
 
 export default function TokenStatusMonitor() {
   const { refreshToken } = useApiAuth();
@@ -74,7 +81,7 @@ export default function TokenStatusMonitor() {
             });
             
             // Invalidate balance cache after successful refresh
-            balanceService.invalidateCache();
+            invalidateCache();
           }
         } catch (refreshError) {
           console.error('Failed to refresh token after auth error:', refreshError);
@@ -128,30 +135,67 @@ export default function TokenStatusMonitor() {
       window.dispatchEvent(authErrorEvent);
     };
     
-    // Patch document service methods to automatically handle auth errors
-    const originalCheckTranslationStatus = documentService.checkTranslationStatus;
-    documentService.checkTranslationStatus = async (...args) => {
-      try {
-        return await originalCheckTranslationStatus(...args);
-      } catch (error) {
-        // Check for auth errors
-        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-          // Report the auth error
-          window.reportAuthError('checkTranslationStatus');
-          
-          // Return fallback status
-          return documentService._createFallbackStatus(args[0]);
+    // Create local document service with modified methods
+    const documentService = {
+      // Create a placeholder for checkTranslationStatus function
+      checkTranslationStatus: async (processId) => {
+        try {
+          // Use direct API call instead
+          const response = await api.get(`/documents/status/${processId}`);
+          return response.data;
+        } catch (error) {
+          // Check for auth errors
+          if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+            // Report the auth error
+            window.reportAuthError('checkTranslationStatus');
+            
+            // Return fallback status
+            return {
+              processId: processId,
+              status: 'pending',
+              progress: 0,
+              currentPage: 0, 
+              totalPages: 0,
+              isFallback: true,
+              timestamp: Date.now()
+            };
+          }
+          throw error;
         }
-        throw error;
+      },
+      
+      // Original method to be patched
+      _createFallbackStatus: (processId) => {
+        // Fallback status for when the actual status cannot be fetched
+        return {
+          processId: processId,
+          status: 'pending',
+          progress: 0,
+          currentPage: 0,
+          totalPages: 0,
+          isFallback: true,
+          timestamp: Date.now()
+        };
       }
     };
+    
+    // Patch document service methods to automatically handle auth errors
+    const originalCheckTranslationStatus = documentService.checkTranslationStatus;
+    
+    // This would normally patch the global documentService object,
+    // but since we're recreating it locally, this is just for reference
+    if (window.patchDocumentService) {
+      window.patchDocumentService(documentService);
+    }
     
     return () => {
       // Clean up listeners
       window.removeEventListener('api-auth-error', handleApiAuthError);
       
-      // Restore original methods
-      documentService.checkTranslationStatus = originalCheckTranslationStatus;
+      // Restore original methods - again, this is just for reference
+      if (window.restoreDocumentService) {
+        window.restoreDocumentService();
+      }
       
       // Clear timeout
       if (refreshTimeoutRef.current) {

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ShoppingCart, CreditCard, Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { balanceService } from '../services/api';
+import api from '../services/api'; // Import the default api object instead
 
 export default function PurchasePages({ onSuccess, className = "" }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -66,11 +66,14 @@ export default function PurchasePages({ onSuccess, className = "" }) {
     setIsPurchasing(true);
 
     try {
-      // Use the balance service to purchase pages
-      const result = await balanceService.purchasePages(pageAmount, email);
+      // Use api.post directly instead of balanceService
+      const response = await api.post('/balance/purchase/pages', { 
+        pages: pageAmount, 
+        email 
+      });
       
       // Set the purchase info for display
-      setPurchaseInfo(result.payment);
+      setPurchaseInfo(response.data.payment);
       
       // Move to confirmation step
       setStep(2);
@@ -79,7 +82,7 @@ export default function PurchasePages({ onSuccess, className = "" }) {
       
       // If there's an onSuccess callback, call it
       if (onSuccess) {
-        onSuccess(result);
+        onSuccess(response.data);
       }
     } catch (error) {
       console.error('Purchase failed:', error);

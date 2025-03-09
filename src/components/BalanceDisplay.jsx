@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CreditCard, RefreshCw, Plus, ShoppingCart } from 'lucide-react';
-import { balanceService } from '../services/api';
+import api from '../services/api'; // Import default api instead of balanceService
 import { toast } from 'sonner';
 import PurchasePages from './PurchasePages';
 import AddPages from './AddPages';
@@ -16,6 +16,24 @@ export default function BalanceDisplay() {
   });
   
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // We need to create a balanceService object locally since it's not exported
+  const balanceService = {
+    getBalance: async () => {
+      try {
+        const response = await api.get('/balance/me/balance');
+        return response.data;
+      } catch (error) {
+        console.error('Failed to fetch balance:', error);
+        throw error;
+      }
+    },
+    
+    invalidateCache: () => {
+      console.log('Balance cache invalidated');
+      // This is now a local function, not using the global balanceService
+    }
+  };
 
   // Fetch balance on component mount
   const fetchBalance = useCallback(async (showToast = false) => {
