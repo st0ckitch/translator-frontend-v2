@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
 import { 
   SignedIn, 
   SignedOut, 
@@ -6,8 +6,10 @@ import {
   SignUp, 
   ClerkLoaded, 
   ClerkLoading, 
-  RedirectToSignIn 
+  RedirectToSignIn,
+  useUser 
 } from '@clerk/clerk-react'
+import { useState, useEffect } from 'react'
 import Layout from './components/Layout'
 import DocumentTranslationPage from './components/DocumentTranslation'
 import AccountSettings from './components/AccountSettingsPage'
@@ -15,6 +17,31 @@ import TranslationHistoryPage from './components/TranslationHistoryPage'
 import TranslationView from './components/TranslationView'
 import TokenKeepalive from './components/TokenKeepalive'
 import TokenStatusMonitor from './components/TokenStatusMonitor'
+
+// Consolidated Token Management Component
+function TokenManagement() {
+  const { isSignedIn } = useUser();
+  const [shouldManageToken, setShouldManageToken] = useState(false);
+
+  useEffect(() => {
+    // Only enable token management after a short delay
+    // This prevents immediate token-related requests on page load
+    const timer = setTimeout(() => {
+      setShouldManageToken(true);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [isSignedIn]);
+
+  if (!isSignedIn || !shouldManageToken) return null;
+
+  return (
+    <>
+      <TokenKeepalive />
+      <TokenStatusMonitor />
+    </>
+  );
+}
 
 function App() {
   return (
@@ -26,10 +53,9 @@ function App() {
       </ClerkLoading>
       
       <ClerkLoaded>
-        {/* Add token management components */}
+        {/* Consolidated and delayed token management */}
         <SignedIn>
-          <TokenKeepalive />
-          <TokenStatusMonitor />
+          <TokenManagement />
         </SignedIn>
         
         <Routes>
@@ -81,6 +107,7 @@ function App() {
               </>
             } />
             
+            {/* Sign In Route */}
             <Route path="/sign-in/*" element={
               <SignedOut>
                 <div className="flex items-center justify-center min-h-[calc(100vh-8rem)] bg-gray-50">
@@ -91,6 +118,7 @@ function App() {
               </SignedOut>
             } />
             
+            {/* Sign Up Route */}
             <Route path="/sign-up/*" element={
               <SignedOut>
                 <div className="flex items-center justify-center min-h-[calc(100vh-8rem)] bg-gray-50">
