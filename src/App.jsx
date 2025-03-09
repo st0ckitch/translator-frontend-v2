@@ -20,35 +20,10 @@ import TokenStatusMonitor from './components/TokenStatusMonitor'
 
 // Consolidated Token Management Component
 function TokenManagement() {
-  const { isSignedIn } = useUser();
-  const initRef = useRef(false);
-  const [tokenComponentsEnabled, setTokenComponentsEnabled] = useState(false);
-
-  useEffect(() => {
-    // Only initialize token management once, with significant delay
-    if (isSignedIn && !initRef.current) {
-      initRef.current = true;
-      
-      // Delay token management initialization by 8 seconds
-      // This helps prevent token requests during initial app loading
-      const timer = setTimeout(() => {
-        setTokenComponentsEnabled(true);
-      }, 8000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [isSignedIn]);
-
-  // Only render token management components when explicitly enabled
-  if (!isSignedIn || !tokenComponentsEnabled) return null;
-
-  return (
-    <>
-      <TokenKeepalive />
-      <TokenStatusMonitor />
-    </>
-  );
+  // This component is completely disabled to prevent any token requests
+  return null;
 }
+
 
 function App() {
   return (
