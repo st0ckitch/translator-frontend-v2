@@ -286,7 +286,7 @@ export default function DocumentTranslationPage() {
     if (!processId || !isLoading) {
       return;
     }
-    
+    console.log("What")
     // Log which attempt this is
     pollAttemptRef.current += 1;
     console.log(`🔄 Polling attempt #${pollAttemptRef.current} for process: ${processId}`);
