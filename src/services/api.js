@@ -1032,45 +1032,30 @@ export const documentService = {
     }
   },
   
-  checkTranslationStatus: async (processId) => {
+  checkTranslationStatusWithToken: async (processId, token = null) => {
     let retryCount = 0;
     const maxRetries = 2;
     
-    // Before starting status check, verify token is fresh
-    // This helps avoid 403 errors after periods of inactivity
-    try {
-      if (authToken && shouldRefreshToken(authToken)) {
-        console.log("⚠️ Token expiring soon before status check, refreshing...");
-        try {
-          // Need to get a fresh token
-          authToken = null;
-          const freshToken = await window.Clerk.session.getToken({ 
-            skipCache: true,
-            expiration: 60 * 60 
-          });
-          if (freshToken) {
-            authToken = freshToken;
-            logTokenInfo(freshToken, "pre-status-check");
-          }
-        } catch (refreshError) {
-          console.warn("Failed pre-status check token refresh:", refreshError);
-        }
-      }
-    } catch (tokenError) {
-      console.warn("Failed to check token expiration before status check:", tokenError);
-    }
-    
     while (retryCount <= maxRetries) {
       try {
-        // Use a longer timeout for status checks
-        const response = await api.get(`/documents/status/${processId}`, {
-          headers: {
-            'X-Is-Status-Check': 'true', // Mark as status check for special handling
-            'X-Check-Count': retryCount,
-            'X-Check-Time': Date.now()
-          },
+        // Create request options with the token if provided
+        const requestOptions = {
+          headers: {},
           timeout: 15000 // 15 seconds timeout
-        });
+        };
+        
+        // Add token to this specific request if provided
+        if (token) {
+          requestOptions.headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        // Add additional headers to help with debugging
+        requestOptions.headers['X-Is-Status-Check'] = 'true';
+        requestOptions.headers['X-Check-Count'] = retryCount;
+        requestOptions.headers['X-Check-Time'] = Date.now();
+        
+        // Use api with the specific options
+        const response = await api.get(`/documents/status/${processId}`, requestOptions);
         
         // Store the successful status for fallback
         documentService._updateLastKnownStatus(processId, response.data);
@@ -1080,7 +1065,7 @@ export const documentService = {
         
         return response.data;
       } catch (error) {
-        // For network errors or timeouts, don't immediately fail
+        // No retries for network errors, just use fallback status
         if (error.code === 'ECONNABORTED' || error.message.includes('timeout') || !error.response) {
           console.warn(`Network issue while checking status for ${processId} - using fallback status`);
           return {
@@ -1094,89 +1079,53 @@ export const documentService = {
           };
         }
         
-        // For 403 errors (probably due to token expiration after inactivity), handle specially
-        if (error.response && error.response.status === 403) {
-          console.warn(`Authentication error (403) for status check of ${processId} - retry attempt ${retryCount + 1}`);
-          
+        // Handle auth errors by getting a fresh token for the retry
+        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
           if (retryCount < maxRetries) {
             retryCount++;
+            console.log(`Auth error (${error.response.status}) in status check, retry #${retryCount}/${maxRetries}`);
             
-            // Force token refresh before retry
             try {
-              console.log(`Forcefully refreshing token before retry #${retryCount}`);
-              authToken = null; // Clear token to force refresh
-              
-              // Get a fresh token directly from Clerk
+              // Try to get a fresh token for next attempt
               const freshToken = await window.Clerk.session.getToken({
                 skipCache: true,
                 expiration: 60 * 60
               });
               
               if (freshToken) {
-                // Update token and log info
-                authToken = freshToken;
-                logTokenInfo(freshToken, `status-retry-${retryCount}`);
+                token = freshToken; // Update token for next attempt
+                console.log(`Got fresh token for retry #${retryCount}`);
                 
                 // Wait a short time before retrying
                 await new Promise(resolve => setTimeout(resolve, 500));
                 
-                console.log(`Retrying status check for ${processId} with fresh token`);
-                continue; // Retry loop with fresh token
+                // Continue to next retry iteration
+                continue;
               }
-            } catch (refreshError) {
-              console.error(`Failed to refresh token for status retry ${retryCount}:`, refreshError);
+            } catch (tokenError) {
+              console.warn(`Failed to get fresh token for retry #${retryCount}:`, tokenError);
             }
           }
           
-          // If we've exhausted retries or refresh failed, return fallback status
-          console.warn(`Auth errors persist after ${retryCount} retries, using fallback status`);
+          // If max retries reached, return fallback status
+          console.log(`Auth errors persist after ${retryCount} retries, using fallback status`);
           return documentService._createFallbackStatus(processId);
         }
         
-        // Handle other authentication errors
-        if (error.response && error.response.status === 401) {
-          if (retryCount < maxRetries) {
-            retryCount++;
-            console.log(`Auth error in status check, retry attempt ${retryCount}/${maxRetries}`);
-            
-            // Force token refresh before retry
-            try {
-              authToken = null;
-              tokenExpiryTime = null;
-              
-              // Get a new token directly from Clerk
-              try {
-                const newToken = await window.Clerk.session.getToken({ 
-                  skipCache: true,
-                  expiration: 60 * 60 
-                });
-                
-                if (newToken) {
-                  authToken = newToken;
-                  // Wait 500ms before retry
-                  await new Promise(resolve => setTimeout(resolve, 500));
-                  continue; // Retry the loop
-                }
-              } catch (clerkError) {
-                console.error("Failed to get fresh Clerk token:", clerkError);
-              }
-            } catch (e) {
-              console.warn('Error during status check retry setup:', e);
-            }
-          } else {
-            // We've exceeded retries, return fallback status
-            console.warn(`Auth errors persist after ${maxRetries} retries, using fallback status`);
-            return documentService._createFallbackStatus(processId);
-          }
+        // For other errors, retry if we haven't reached max attempts
+        if (retryCount < maxRetries) {
+          retryCount++;
+          
+          // Exponential backoff for retries
+          const backoffTime = Math.pow(2, retryCount) * 500; // 1s, 2s, 4s...
+          console.log(`Retrying status check in ${backoffTime}ms (attempt ${retryCount}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, backoffTime));
+          
+          continue; // Try again
         }
         
-        // If we've reached the max retries or encountered a non-auth error, log and return fallback
-        if (retryCount >= maxRetries) {
-          console.warn(`Max retries (${maxRetries}) exceeded for status check, using fallback`);
-          return documentService._createFallbackStatus(processId);
-        }
-        
-        throw error; // For other errors, propagate normally
+        // Exhaused retries, return fallback
+        return documentService._createFallbackStatus(processId);
       }
     }
     

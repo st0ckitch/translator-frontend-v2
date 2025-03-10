@@ -293,8 +293,32 @@ export default function DocumentTranslationPage() {
     console.log(`🔄 Polling attempt #${pollAttemptRef.current} for process: ${processId}`);
     
     try {
-      const statusData = await documentService.checkTranslationStatus(processId);
+      // Get a fresh token for status checks to prevent 403 errors
+      let currentToken = null;
+      try {
+        currentToken = await window.Clerk.session.getToken({
+          skipCache: pollAttemptRef.current > 3, // Only skip cache after multiple attempts
+          expiration: 60 * 60
+        });
+      } catch (tokenError) {
+        console.warn('Token fetch error in status check, continuing with existing token');
+      }
       
+      // Add the current token directly to this specific request
+      const statusRequestOptions = {};
+      if (currentToken) {
+        statusRequestOptions.headers = {
+          'Authorization': `Bearer ${currentToken}`
+        };
+      }
+      
+      // Use the token directly for this status request
+      const statusData = await documentService.checkTranslationStatusWithToken(
+        processId, 
+        currentToken
+      );
+      
+      // Rest of your existing pollTranslationStatus function...
       // Reset consecutive failures on success
       setConsecFailures(0);
       
@@ -325,11 +349,24 @@ export default function DocumentTranslationPage() {
         const pollInterval = getPollInterval();
         statusCheckTimeoutRef.current = setTimeout(pollTranslationStatus, pollInterval);
       }
+      
     } catch (error) {
       console.error('🚨 Status check error:', error);
       
       // Increase consecutive failures
       setConsecFailures(prev => prev + 1);
+      
+      // For auth errors, try to force a token refresh before next attempt
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        try {
+          // Force token refresh
+          console.log('Forcing token refresh after status check auth error');
+          window.authToken = null; // Clear global token
+          await window.Clerk.session.getToken({ skipCache: true }); // Force refresh
+        } catch (refreshError) {
+          console.warn('Failed to refresh token after auth error:', refreshError);
+        }
+      }
       
       // Don't give up too easily - continue polling with exponential backoff
       // Only stop polling after a very high number of consecutive failures

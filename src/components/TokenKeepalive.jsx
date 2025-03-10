@@ -18,6 +18,31 @@ export default function TokenKeepalive() {
   const tokenExpiryRef = useRef(0);
   const [debugInfo, setDebugInfo] = useState(null);
   
+  // Initialize global variables safely to prevent reference errors
+  // This runs once on component mount
+  useEffect(() => {
+    // Defensive initialization of global objects
+    if (typeof window !== 'undefined') {
+      // Ensure we have safe global objects
+      if (!window.hasOwnProperty('__lastApiTokenRefresh')) {
+        window.__lastApiTokenRefresh = 0;
+      }
+      
+      if (!window.hasOwnProperty('authToken')) {
+        window.authToken = null;
+      }
+      
+      if (!window.hasOwnProperty('tokenExpiryTime')) {
+        window.tokenExpiryTime = null;
+      }
+      
+      // Only log in development
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('TokenKeepalive: Initialized safe global references');
+      }
+    }
+  }, []);
+  
   // Rate limiting for refreshes
   const canRefresh = () => {
     const now = Date.now();
