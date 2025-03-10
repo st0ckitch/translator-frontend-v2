@@ -279,6 +279,7 @@ export default function DocumentTranslationPage() {
     return finalInterval;
   }, [translationStatus, consecFailures, statusCheckStalled]);
 
+  // Polling function with better error handling and support for stalled status
   const pollTranslationStatus = useCallback(async () => {
     const { processId, isLoading } = translationStatus;
     
@@ -286,33 +287,12 @@ export default function DocumentTranslationPage() {
     if (!processId || !isLoading) {
       return;
     }
-    console.log("What")
+    
     // Log which attempt this is
     pollAttemptRef.current += 1;
     console.log(`🔄 Polling attempt #${pollAttemptRef.current} for process: ${processId}`);
     
     try {
-      // Before checking status, ensure we have a valid token
-      try {
-        // Get a fresh token directly from Clerk
-        // This bypasses any caching issues that might be happening
-        const freshToken = await window.Clerk.session.getToken({ 
-          skipCache: true,
-          expiration: 60 * 60 // Request 1 hour token
-        });
-        
-        // Manually set the token in the global space
-        if (window.authToken !== undefined) {
-          window.authToken = freshToken;
-        }
-        
-        // Log that we're using a fresh token for this status check
-        console.log(`Using fresh token for status check #${pollAttemptRef.current}`);
-      } catch (tokenError) {
-        console.warn(`Failed to get fresh token for status check: ${tokenError}`);
-        // Continue anyway - the interceptors will try to handle it
-      }
-      
       const statusData = await documentService.checkTranslationStatus(processId);
       
       // Reset consecutive failures on success
@@ -351,29 +331,6 @@ export default function DocumentTranslationPage() {
       // Increase consecutive failures
       setConsecFailures(prev => prev + 1);
       
-      // If we get auth errors, force token refresh for next attempt
-      if (error.response?.status === 403 || error.response?.status === 401 ||
-          (error.message && error.message.toLowerCase().includes('auth'))) {
-        console.warn('🔐 Auth error detected, forcing token refresh');
-        
-        try {
-          // Clear existing token
-          if (window.authToken !== undefined) {
-            window.authToken = null;
-          }
-          
-          // Force a fresh token fetch directly from Clerk
-          await window.Clerk.session.getToken({ 
-            skipCache: true,
-            expiration: 60 * 60
-          });
-          
-          console.log('✅ Fresh token obtained after auth error');
-        } catch (refreshError) {
-          console.error('❌ Failed to refresh token after auth error:', refreshError);
-        }
-      }
-      
       // Don't give up too easily - continue polling with exponential backoff
       // Only stop polling after a very high number of consecutive failures
       if (consecFailures > 20) {
@@ -397,7 +354,7 @@ export default function DocumentTranslationPage() {
       console.log(`🔄 Scheduling retry poll in ${backoffTime}ms after error`);
       statusCheckTimeoutRef.current = setTimeout(pollTranslationStatus, backoffTime);
     }
-  }, [translationStatus, consecFailures, getPollInterval, fetchTranslationResults]);
+  }, [translationStatus, consecFailures, getPollInterval]);
   
 
   useEffect(() => {
