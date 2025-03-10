@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ShoppingCart, CreditCard, Plus, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import api from '../services/api'; // Import the default api object instead
+import api from '../services/api';
 
 export default function PurchasePages({ onSuccess, className = "" }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -25,7 +25,7 @@ export default function PurchasePages({ onSuccess, className = "" }) {
   // Calculate price based on page amount
   const calculatePrice = (pages) => {
     if (isCustom) {
-      return pages * 2; // Custom price is now 2x the page amount
+      return pages * 2; // Custom price is 2x the page amount
     } else {
       const selectedPackage = packageOptions.find(pkg => pkg.pages === pages);
       return selectedPackage ? selectedPackage.price : 0;
@@ -74,11 +74,15 @@ export default function PurchasePages({ onSuccess, className = "" }) {
     }
 
     setIsPurchasing(true);
+    
+    // Calculate the actual price to pay
+    const priceToPay = calculatePrice(pageAmount);
 
     try {
       // Use api.post directly instead of balanceService
       const response = await api.post('/balance/purchase/pages', { 
-        pages: pageAmount, 
+        pages: pageAmount,
+        amount: priceToPay, // Pass the calculated price
         email 
       });
       
@@ -239,7 +243,7 @@ export default function PurchasePages({ onSuccess, className = "" }) {
                       ) : (
                         <>
                           <CreditCard size={16} />
-                          Purchase {pageAmount} Pages
+                          Purchase {pageAmount} Pages ({calculatePrice(pageAmount)} GEL)
                         </>
                       )}
                     </button>
