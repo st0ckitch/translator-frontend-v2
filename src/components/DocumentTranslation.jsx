@@ -56,6 +56,52 @@ export default function DocumentTranslationPage() {
     lastStatusUpdate: null
   });
 
+    // 1. Reset state between translations
+  const resetTranslationState = () => {
+    // Clear component state
+    setTranslationStatus({
+      isLoading: false,
+      progress: 0,
+      status: null,
+      error: null,
+      translatedText: null,
+      fileName: null,
+      direction: 'ltr',
+      processId: null,
+      currentPage: 0,
+      totalPages: 0,
+      lastStatusUpdate: null
+    });
+    
+    // Reset polling and any timers
+    if (statusCheckTimeoutRef.current) {
+      clearTimeout(statusCheckTimeoutRef.current);
+      statusCheckTimeoutRef.current = null;
+    }
+    
+    // Reset auth token to force fresh fetch
+    if (window.authToken) {
+      console.log("Clearing auth token for new translation");
+      window.authToken = null;
+    }
+    
+    // Reset polling attempt counter
+    pollAttemptRef.current = 0;
+    
+    // Reset consecutive failures counter
+    setConsecFailures(0);
+    
+    // Additional reset for any other state
+    setTimeCounter(0);
+    setStatusCheckStalled(false);
+    setSimulatedProgress({
+      active: false,
+      value: 0,
+      page: 0,
+      total: 0
+    });
+  };
+
   const [isCopied, setIsCopied] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState('en');
 
@@ -373,6 +419,15 @@ export default function DocumentTranslationPage() {
     if (!fromLang || !toLang) {
       toast.error('Please select both source and target languages.');
       return;
+    }
+
+    // If we already have a completed translation, reset the state first
+    if (translationStatus.status === "completed" || translationStatus.translatedText) {
+      console.log("Resetting translation state before starting new translation");
+      resetTranslationState();
+      
+      // Short delay to ensure reset completes
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     if (translationStatus.isLoading) {
