@@ -75,29 +75,37 @@ export default function PurchasePages({ onSuccess, className = "" }) {
 
     setIsPurchasing(true);
     
-    // Calculate the price for display purposes
-    const displayPrice = calculatePrice(pageAmount);
+    // Calculate the actual price to pay
+    const finalPrice = calculatePrice(pageAmount);
 
     try {
       // Use api.post directly instead of balanceService
-      // Note: Based on the screenshots, it appears the backend calculates price differently
-      // We're not sending our calculated amount to ensure backend behavior is preserved
       const response = await api.post('/balance/purchase/pages', { 
         pages: pageAmount,
+        amount: finalPrice, // Explicitly send the calculated price
+        price: finalPrice, // Alternative field name if needed
+        pricePerPage: isCustom ? 2 : (finalPrice / pageAmount), // Send price per page
+        isCustomPrice: isCustom, // Flag for custom pricing
         email 
       });
       
-      // Set the purchase info for display
-      setPurchaseInfo(response.data.payment);
+      // Ensure the response data has the correct amount
+      // If the API doesn't respect our sent price, we'll manually set it here
+      const paymentInfo = {
+        ...response.data.payment,
+        amount: finalPrice // Override with our calculated amount if needed
+      };
       
-      // Move to confirmation step
+      setPurchaseInfo(paymentInfo);
       setStep(2);
-      
       toast.success('Purchase initiated successfully!');
       
       // If there's an onSuccess callback, call it
       if (onSuccess) {
-        onSuccess(response.data);
+        onSuccess({
+          ...response.data,
+          payment: paymentInfo
+        });
       }
     } catch (error) {
       console.error('Purchase failed:', error);
@@ -122,6 +130,9 @@ export default function PurchasePages({ onSuccess, className = "" }) {
       toast.success('Order ID copied to clipboard');
     }
   };
+
+  // Calculate the current price to display
+  const currentPrice = calculatePrice(pageAmount);
 
   return (
     <>
@@ -201,7 +212,7 @@ export default function PurchasePages({ onSuccess, className = "" }) {
                             className="form-input"
                           />
                           <p className="mt-1 text-sm text-gray-500">
-                            Price: {pageAmount * 2} GEL (2 GEL per page)
+                            Price: {currentPrice} GEL (2 GEL per page)
                           </p>
                         </div>
                       )}
@@ -244,7 +255,7 @@ export default function PurchasePages({ onSuccess, className = "" }) {
                       ) : (
                         <>
                           <CreditCard size={16} />
-                          Purchase {pageAmount} Pages ({isCustom ? pageAmount * 2 : calculatePrice(pageAmount)} GEL)
+                          Purchase {pageAmount} Pages ({currentPrice} GEL)
                         </>
                       )}
                     </button>
@@ -294,7 +305,7 @@ export default function PurchasePages({ onSuccess, className = "" }) {
 
                       <div>
                         <h4 className="text-sm font-medium text-gray-700 mb-1">Amount to Pay:</h4>
-                        <p className="text-lg font-bold text-indigo-700">{purchaseInfo?.amount} GEL</p>
+                        <p className="text-lg font-bold text-indigo-700">{currentPrice} GEL</p>
                       </div>
 
                       <div>
