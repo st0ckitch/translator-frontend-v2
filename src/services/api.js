@@ -885,9 +885,10 @@ export const documentService = {
     }
   },
 
+  // that uses fetch API directly instead of axios
   initiateTranslation: async (formData) => {
     const startTime = Date.now();
-    console.log(`🔄 [${new Date().toISOString()}] Initiating document translation...`);
+    console.log(`🔄 [${new Date().toISOString()}] Initiating document translation with direct fetch API...`);
     
     // Extract file name for potential recovery
     const file = formData.get('file');
@@ -896,19 +897,28 @@ export const documentService = {
     
     try {
       // Force a fresh token before starting translation
+      let token;
       try {
+        // Clear any cached token
         authToken = null;
-        const newToken = await window.Clerk.session.getToken({ 
+        
+        // Get fresh token directly from Clerk
+        token = await window.Clerk.session.getToken({ 
           skipCache: true,
           expiration: 60 * 60 
         });
-        authToken = newToken;
-        console.log("✅ Fresh token obtained for translation request");
+        
+        if (!token) {
+          throw new Error("Failed to obtain authentication token");
+        }
+        
+        console.log("✅ Fresh token obtained for direct fetch translation request");
       } catch (tokenError) {
-        console.warn("⚠️ Failed to refresh token before translation:", tokenError);
+        console.error("❌ Token fetch error:", tokenError);
+        throw new Error("Authentication failed: " + (tokenError.message || "Unable to get token"));
       }
       
-      // Debug FormData contents (helpful for troubleshooting)
+      // Log FormData contents for debugging
       console.log('FormData contains:');
       for (let key of formData.keys()) {
         const value = formData.get(key);
@@ -919,90 +929,83 @@ export const documentService = {
         }
       }
       
-      // Make sure we don't interfere with FormData boundary handling
-      const response = await api.post('/documents/translate', formData, {
-        // IMPORTANT: Do NOT set Content-Type for FormData
-        // Let the browser set the correct boundary parameter automatically
-        timeout: 60000 // 60 seconds timeout
+      // Construct the full URL
+      const baseUrl = import.meta.env.VITE_API_URL || '/api';
+      const url = `${baseUrl}/documents/translate`;
+      console.log(`🔄 Direct fetch to URL: ${url}`);
+      
+      // Use fetch API directly instead of axios
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+          // No Content-Type header for FormData - browser sets it with boundary
+        },
+        body: formData, // FormData is handled correctly by fetch
+        credentials: 'include', // Send cookies if needed
+        mode: 'cors' // Enable CORS
       });
       
+      // Handle response
+      if (!response.ok) {
+        // Handle error response
+        let errorDetails = {
+          status: response.status,
+          statusText: response.statusText
+        };
+        
+        try {
+          // Try to parse error response body
+          const errorData = await response.json();
+          errorDetails.data = errorData;
+          
+          throw new Error(`Server returned ${response.status} ${response.statusText}: ${JSON.stringify(errorData)}`);
+        } catch (parseError) {
+          // If we can't parse JSON, just use status text
+          throw new Error(`Server returned ${response.status} ${response.statusText}`);
+        }
+      }
+      
+      // Parse successful response
+      const data = await response.json();
+      
       const duration = Date.now() - startTime;
-      console.log(`✅ [${new Date().toISOString()}] Translation initiated in ${duration}ms, received processId: ${response.data.processId}`);
+      console.log(`✅ [${new Date().toISOString()}] Translation initiated successfully with direct fetch in ${duration}ms, processId: ${data.processId}`);
       
       // Store in local storage for recovery purposes
       try {
         const translationInfo = {
-          processId: response.data.processId,
+          processId: data.processId,
           fileName: fileName,
           timestamp: Date.now(),
-          status: response.data.status || 'pending'
+          status: data.status || 'pending'
         };
+        
         // Keep a history of recent translations for recovery
         const recentTranslations = JSON.parse(localStorage.getItem('recentTranslations') || '[]');
         recentTranslations.unshift(translationInfo); // Add to beginning
+        
         // Keep only last 10
         if (recentTranslations.length > 10) {
           recentTranslations.pop();
         }
+        
         localStorage.setItem('recentTranslations', JSON.stringify(recentTranslations));
         console.log("📦 Saved translation info to local storage for recovery");
       } catch (storageError) {
         console.warn("⚠️ Failed to save to local storage:", storageError);
       }
       
-      return response.data;
+      return data;
     } catch (error) {
       const duration = Date.now() - startTime;
       console.error(`❌ [${new Date().toISOString()}] Translation initiation failed after ${duration}ms:`, error);
       
-      // Log detailed information about the error
-      console.error('Error details:', {
-        message: error.message,
-        name: error.name,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        responseData: error.response?.data,
-        stack: error.stack
-      });
-      
-      // Handle 403 Forbidden errors (common with auth issues)
-      if (error.response && error.response.status === 403) {
-        console.log("🔐 Received 403 Forbidden, attempting one more try with token refresh");
-        
-        try {
-          // Force a completely fresh token
-          authToken = null;
-          const newToken = await window.Clerk.session.getToken({
-            skipCache: true,
-            expiration: 60 * 60
-          });
-          
-          if (newToken) {
-            console.log("✅ New token obtained after 403 error, retrying request");
-            
-            // Try one more time with the fresh token
-            const retryResponse = await api.post('/documents/translate', formData, {
-              headers: {
-                'Authorization': `Bearer ${newToken}`
-                // Still don't set Content-Type for FormData
-              },
-              timeout: 60000
-            });
-            
-            console.log("✅ Retry request succeeded!");
-            return retryResponse.data;
-          }
-        } catch (retryError) {
-          console.error("❌ Retry request also failed:", retryError);
-          // Fall through to other error handling
-        }
-      }
-      
       // For timeouts, try to recover by finding active translations
-      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      if (error.name === 'AbortError' || error.message.includes('timeout')) {
         console.log("⏳ Upload request timed out, but the server might still be processing it");
         
-        // First try to find the translation using the backend API
+        // Try to find the translation using the backend API
         try {
           // Give the server a moment to create the record
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -1022,41 +1025,10 @@ export const documentService = {
         } catch (recoveryError) {
           console.warn("⚠️ Failed to recover translation after timeout:", recoveryError);
         }
-        
-        throw new Error(
-          'The server is taking longer than expected to respond. ' +
-          'Your file might be processing in the background. ' +
-          'You can try checking the status in a few moments.'
-        );
-      }
-      
-      // Handle auth errors (401/403) with special retry logic
-      if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-        try {
-          return await documentService._handleAuthError(
-            error, 
-            'initiateTranslation', 
-            () => api.post('/documents/translate', formData, {
-              // Don't set Content-Type for FormData
-              timeout: 60000
-            })
-          ).then(response => response.data);
-        } catch (retryError) {
-          // If retry fails, continue with normal error handling
-          console.error("❌ Auth error retry failed for translation initiation:", retryError);
-        }
       }
       
       // Rethrow with improved error message
-      if (error.response && error.response.status === 413) {
-        throw new Error("File too large for the server to process. Please try a smaller file.");
-      } else if (error.response && error.response.status === 415) {
-        throw new Error("Unsupported file type. Please check that your file is in a supported format.");
-      } else if (error.response && error.response.data && error.response.data.error) {
-        throw new Error(error.response.data.error);
-      } else {
-        throw error; // Throw the original error
-      }
+      throw error;
     }
   },
   
