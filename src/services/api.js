@@ -1031,7 +1031,7 @@ export const documentService = {
       throw error;
     }
   },
-  
+
   checkTranslationStatusWithToken: async (processId, token = null) => {
     let retryCount = 0;
     const maxRetries = 2;
@@ -1184,7 +1184,112 @@ export const documentService = {
       throw error.response?.data?.error || 'Export to DOCX failed.';
     }
   },
-
+  getTranslationResultWithToken: async (processId, allowPartial = false, token = null) => {
+    // Deduplicate concurrent result fetches for the same processId
+    const requestKey = `result-${processId}-${allowPartial ? 'partial' : 'complete'}`;
+    
+    // Create an AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15-second timeout for results
+    
+    const startTime = Date.now();
+    console.log(`🔄 [${new Date().toISOString()}] Fetching translation result for process: ${processId} (partial=${allowPartial})`);
+    
+    try {
+      const url = allowPartial 
+        ? `documents/result/${processId}?partial=true` 
+        : `documents/result/${processId}`;
+      
+      // Prepare request options
+      const requestOptions = {
+        signal: controller.signal,
+        timeout: 15000
+      };
+      
+      // Add token if provided (bypassing global token)
+      if (token) {
+        requestOptions.headers = {
+          'Authorization': `Bearer ${token}`
+        };
+      }
+      
+      const response = await api.get(url, requestOptions);
+      
+      // Clear timeout
+      clearTimeout(timeoutId);
+      
+      const duration = Date.now() - startTime;
+      console.log(`✅ [${new Date().toISOString()}] Translation result fetched successfully in ${duration}ms, content length: ${response.data.translatedText?.length || 0} chars`);
+      
+      // Update status to completed in our cache
+      documentService._updateLastKnownStatus(processId, {
+        processId: processId,
+        status: allowPartial ? 'partial' : 'completed',
+        progress: allowPartial ? Math.min(95, response.data.metadata?.progress || 0) : 100,
+        currentPage: response.data.metadata?.currentPage || 0,
+        totalPages: response.data.metadata?.totalPages || 0
+      });
+      
+      return response.data;
+    } catch (error) {
+      // Clear timeout
+      clearTimeout(timeoutId);
+      
+      const duration = Date.now() - startTime;
+      console.error(`❌ [${new Date().toISOString()}] Result fetch failed after ${duration}ms:`, error);
+      
+      // Handle auth errors (401/403)
+      if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+        console.log("🔐 Auth error when fetching results, trying with fresh token");
+        
+        try {
+          // Get a fresh token directly from Clerk
+          const freshToken = await window.Clerk.session.getToken({
+            skipCache: true,
+            expiration: 60 * 60
+          });
+          
+          if (freshToken) {
+            console.log("✅ Got fresh token for result fetch retry");
+            
+            // Retry with the fresh token
+            const retryOptions = {
+              headers: {
+                'Authorization': `Bearer ${freshToken}`
+              },
+              timeout: 15000
+            };
+            
+            const retryResponse = await api.get(url, retryOptions);
+            console.log("✅ Result fetch retry succeeded with fresh token");
+            return retryResponse.data;
+          }
+        } catch (retryError) {
+          console.error("❌ Result fetch retry also failed:", retryError);
+          // Continue to general error handling
+        }
+      }
+      
+      // Handle timeouts
+      if (
+        error.name === 'AbortError' || 
+        error.code === 'ECONNABORTED' || 
+        error.message.includes('timeout')
+      ) {
+        throw new Error('Request timed out while fetching translation results. The server might be busy processing a large document. Please try again in a moment.');
+      }
+      
+      // Enhanced error handling with specific error messages
+      if (error.response?.status === 404) {
+        throw new Error('Translation not found. The process may have expired.');
+      } else if (error.response?.status === 400) {
+        throw new Error('Translation is not yet complete. Please wait until it finishes processing.');
+      }
+      
+      throw new Error('Failed to fetch translation result. Please try again later.');
+    }
+  },
+  
   exportToDriveAsPdf: async (content, fileName, options = {}) => {
     console.log(`🔄 Exporting to Google Drive as PDF: ${fileName}...`);
     try {

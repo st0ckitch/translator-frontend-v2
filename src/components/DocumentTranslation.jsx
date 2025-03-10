@@ -766,16 +766,28 @@ export default function DocumentTranslationPage() {
     }
   };
 
-  // Improved fetchTranslationResults function with partial result handling
+  // Improved fetchTranslationResults function with direct token authentication
   const fetchTranslationResults = async (processId) => {
     try {
-      // Ensure token is valid before fetching results
-      if (translationStatus.status === 'completed') {
-        await ensureValidToken();
+      // Get a fresh token for result fetching
+      let token = null;
+      try {
+        token = await window.Clerk.session.getToken({
+          skipCache: true,
+          expiration: 60 * 60
+        });
+        console.log("✅ Got fresh token for fetching translation results");
+      } catch (tokenError) {
+        console.warn("⚠️ Failed to get fresh token for results:", tokenError);
+        // Continue anyway and let the request use the default auth
       }
       
-      // First try with normal request
-      const resultResponse = await documentService.getTranslationResult(processId);
+      // Use the new method with direct token
+      const resultResponse = await documentService.getTranslationResultWithToken(
+        processId, 
+        false, // not partial
+        token  // pass the fresh token
+      );
       
       setTranslationStatus({
         isLoading: false,
@@ -819,8 +831,23 @@ export default function DocumentTranslationPage() {
         console.log('Translation not complete yet, trying to fetch partial results...');
         
         try {
+          // Try to get a fresh token again for partial results
+          let partialToken = null;
+          try {
+            partialToken = await window.Clerk.session.getToken({
+              skipCache: true,
+              expiration: 60 * 60
+            });
+          } catch (tokenError) {
+            console.warn("Failed to get token for partial results:", tokenError);
+          }
+          
           // Add partial=true parameter to get whatever is ready
-          const partialResponse = await documentService.getTranslationResult(processId, true);
+          const partialResponse = await documentService.getTranslationResultWithToken(
+            processId, 
+            true,   // partial=true
+            partialToken
+          );
           
           if (partialResponse && partialResponse.translatedText) {
             setTranslationStatus({
@@ -859,13 +886,41 @@ export default function DocumentTranslationPage() {
         
         // Resume polling after a short delay
         statusCheckTimeoutRef.current = setTimeout(pollTranslationStatus, 2000);
-      } else if (error.response && error.response.status === 401) {
-        // Authentication error - retry after a moment
-        console.log('Authentication error when fetching results, retrying shortly...');
+      } else if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+        // Authentication error - retry after a moment with a completely fresh token
+        console.log('Authentication error when fetching results, retrying with fresh token...');
         
         setTimeout(async () => {
           try {
-            await fetchTranslationResults(processId);
+            // Force token refresh
+            const freshToken = await window.Clerk.session.getToken({ 
+              skipCache: true,
+              expiration: 60 * 60 
+            });
+            
+            // Retry with the fresh token
+            const retryResponse = await documentService.getTranslationResultWithToken(
+              processId,
+              false,
+              freshToken
+            );
+            
+            // Update state with the successful result
+            setTranslationStatus({
+              isLoading: false,
+              progress: 100,
+              status: 'completed',
+              error: null,
+              translatedText: retryResponse.translatedText,
+              fileName: retryResponse.metadata.originalFileName,
+              direction: retryResponse.direction,
+              processId: processId,
+              currentPage: retryResponse.metadata.currentPage || 0,
+              totalPages: retryResponse.metadata.totalPages || 0,
+              lastStatusUpdate: Date.now()
+            });
+            
+            toast.success('Translation completed!');
           } catch (retryError) {
             console.error('Failed to fetch results on retry:', retryError);
             setTranslationStatus(prev => ({
