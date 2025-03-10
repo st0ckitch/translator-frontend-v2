@@ -75,14 +75,15 @@ export default function PurchasePages({ onSuccess, className = "" }) {
 
     setIsPurchasing(true);
     
-    // Calculate the actual price to pay
-    const priceToPay = calculatePrice(pageAmount);
+    // Calculate the price for display purposes
+    const displayPrice = calculatePrice(pageAmount);
 
     try {
       // Use api.post directly instead of balanceService
+      // Note: Based on the screenshots, it appears the backend calculates price differently
+      // We're not sending our calculated amount to ensure backend behavior is preserved
       const response = await api.post('/balance/purchase/pages', { 
         pages: pageAmount,
-        amount: priceToPay, // Pass the calculated price
         email 
       });
       
@@ -243,7 +244,7 @@ export default function PurchasePages({ onSuccess, className = "" }) {
                       ) : (
                         <>
                           <CreditCard size={16} />
-                          Purchase {pageAmount} Pages ({calculatePrice(pageAmount)} GEL)
+                          Purchase {pageAmount} Pages ({isCustom ? pageAmount * 2 : calculatePrice(pageAmount)} GEL)
                         </>
                       )}
                     </button>
