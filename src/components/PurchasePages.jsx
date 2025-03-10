@@ -13,14 +13,24 @@ export default function PurchasePages({ onSuccess, className = "" }) {
 
   // Predefined package options
   const packageOptions = [
-    { pages: 10, label: '10 pages', price: 10 },
-    { pages: 50, label: '50 pages', price: 50 },
-    { pages: 100, label: '100 pages', price: 100 },
+    { pages: 10, label: '10 pages', price: 20 },
+    { pages: 50, label: '50 pages', price: 85 },
+    { pages: 100, label: '100 pages', price: 120 },
   ];
 
   // Custom amount handling
   const [customAmount, setCustomAmount] = useState('');
   const [isCustom, setIsCustom] = useState(false);
+
+  // Calculate price based on page amount
+  const calculatePrice = (pages) => {
+    if (isCustom) {
+      return pages * 2; // Custom price is now 2x the page amount
+    } else {
+      const selectedPackage = packageOptions.find(pkg => pkg.pages === pages);
+      return selectedPackage ? selectedPackage.price : 0;
+    }
+  };
 
   const handleOpenModal = () => {
     setIsModalOpen(true);
@@ -186,7 +196,7 @@ export default function PurchasePages({ onSuccess, className = "" }) {
                             className="form-input"
                           />
                           <p className="mt-1 text-sm text-gray-500">
-                            Price: {pageAmount} GEL (1 GEL per page)
+                            Price: {pageAmount * 2} GEL (2 GEL per page)
                           </p>
                         </div>
                       )}
