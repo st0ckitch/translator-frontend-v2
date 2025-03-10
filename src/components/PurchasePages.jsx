@@ -13,9 +13,9 @@ export default function PurchasePages({ onSuccess, className = "" }) {
 
   // Predefined package options
   const packageOptions = [
-    { pages: 10, label: '10 pages', price: 20 },
-    { pages: 50, label: '50 pages', price: 85 },
-    { pages: 100, label: '100 pages', price: 120 },
+    { pages: 50, label: '50 pages', price: 100 },
+    { pages: 100, label: '100 pages', price: 170 },
+    { pages: 200, label: '200 pages', price: 240 },
   ];
 
   // Custom amount handling
