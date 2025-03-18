@@ -444,7 +444,7 @@ export default function DocumentDownloadButton({
 
   return (
     <div className={`relative download-dropdown-container ${className}`}>
-      <button
+      {/* <button
         type="button"
         className="button-primary flex items-center gap-2"
         onClick={() => setShowDropdown(!showDropdown)}
@@ -463,7 +463,7 @@ export default function DocumentDownloadButton({
             Download <ChevronDown size={14} className="ml-1" />
           </>
         )}
-      </button>
+      </button> */}
       
       {showDropdown && (
         <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg z-10 border border-gray-100 overflow-hidden">
@@ -473,7 +473,7 @@ export default function DocumentDownloadButton({
           
           <div className="p-1">
             {/* Local download options */}
-            <button
+            {/* <button
               className="flex items-center w-full px-3 py-2.5 text-sm text-left text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-md"
               onClick={() => handleExport('pdf')}
             >
@@ -481,7 +481,7 @@ export default function DocumentDownloadButton({
                 <FileText size={16} className="text-red-600" />
               </div>
               Download as PDF
-            </button>
+            </button> */}
             <button
               className="flex items-center w-full px-3 py-2.5 text-sm text-left text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-md"
               onClick={() => handleExport('docx')}
@@ -493,10 +493,10 @@ export default function DocumentDownloadButton({
             </button>
             
             {/* Divider */}
-            <div className="my-1 border-t border-gray-100"></div>
+            {/* <div className="my-1 border-t border-gray-100"></div> */}
             
             {/* Google Drive options */}
-            <div className="px-3 py-2">
+            {/* <div className="px-3 py-2">
               <div className="flex items-center">
                 <Cloud size={16} className="mr-2 text-gray-500" />
                 <span className="text-sm font-medium text-gray-700">Google Drive</span>
@@ -538,13 +538,13 @@ export default function DocumentDownloadButton({
                   Connect to Google Drive
                 </button>
               )}
-            </div>
+            </div> */}
           </div>
         </div>
       )}
       
       {/* Folder Selector Modal */}
-      {showFolderSelector && (
+      {/* {showFolderSelector && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <FolderSelector
             onSelect={(folder) => {
@@ -555,7 +555,7 @@ export default function DocumentDownloadButton({
             googleDriveService={googleDriveService}
           />
         </div>
-      )}
+      )} */}
     </div>
   );
 }
