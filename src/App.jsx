@@ -161,7 +161,7 @@ function App() {
             } />
             
             {/* Translation History Route */}
-            <Route path="/history" element={
+            {/* <Route path="/history" element={
               <>
                 <SignedIn>
                   <TranslationHistoryPage />
@@ -170,7 +170,7 @@ function App() {
                   <RedirectToSignIn />
                 </SignedOut>
               </>
-            } />
+            } /> */}
             
             {/* Translation View Route */}
             <Route path="/view/:processId" element={

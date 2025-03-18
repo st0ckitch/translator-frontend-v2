@@ -77,7 +77,7 @@ export default function Layout() {
                       Translate
                     </div>
                   </Link>
-                  <Link 
+                  {/* <Link 
                     to="/history" 
                     className={`px-3 py-2 rounded-md text-sm font-medium ${
                       isActive('/history') 
@@ -89,7 +89,7 @@ export default function Layout() {
                       <Clock className="h-4 w-4 mr-1" />
                       History
                     </div>
-                  </Link>
+                  </Link> */}
                   <Link 
                     to="/settings" 
                     className={`px-3 py-2 rounded-md text-sm font-medium ${

@@ -3,7 +3,7 @@ import { CreditCard, RefreshCw, Plus, ShoppingCart } from 'lucide-react';
 import api from '../services/api'; // Import default api instead of balanceService
 import { toast } from 'sonner';
 import PurchasePages from './PurchasePages';
-import AddPages from './AddPages';
+// import AddPages from './AddPages';
 
 export default function BalanceDisplay() {
   const [balance, setBalance] = useState({
