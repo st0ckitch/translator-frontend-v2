@@ -7,7 +7,7 @@ import { documentService } from '../services/api';
 import DocumentsUpload from '../components/DocumentsUpload';
 import DocumentDownloadButton from '../components/DocumentDownloadButton';
 import BalanceDisplay from '../components/BalanceDisplay';
-import GoogleDriveButton from '../components/GoogleDriveButton';
+// import GoogleDriveButton from '../components/GoogleDriveButton';
 import api from '../services/api';
 
 export default function DocumentTranslationPage() {
@@ -1444,14 +1444,14 @@ export default function DocumentTranslationPage() {
                       disabled={!translationStatus.translatedText || translationStatus.isLoading}
                       className="flex items-center gap-2"
                     />
-                    <GoogleDriveButton
+                    {/* <GoogleDriveButton
                       htmlContent={translationStatus.translatedText}
                       fileName={translationStatus.fileName ? `translated_${translationStatus.fileName.replace(/\.(pdf|jpe?g|png|webp|heic)$/i, '.docx')}` : 'translated_document.docx'}
                       onError={(error) => toast.error(error)}
                       onSuccess={() => toast.success('Document saved to Google Drive successfully!')}
                       disabled={!translationStatus.translatedText || translationStatus.isLoading}
                       className="flex items-center gap-2"
-                    />
+                    /> */}
                   </div>
                 </div>
   
