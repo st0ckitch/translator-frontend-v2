@@ -493,7 +493,7 @@ export default function DocumentDownloadButton({
             </button>
             
             {/* Divider */}
-            {/* <div className="my-1 border-t border-gray-100"></div> */}
+            <div className="my-1 border-t border-gray-100"></div>
             
             {/* Google Drive options */}
             {/* <div className="px-3 py-2">
