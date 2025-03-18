@@ -444,7 +444,7 @@ export default function DocumentDownloadButton({
 
   return (
     <div className={`relative download-dropdown-container ${className}`}>
-      {/* <button
+      <button
         type="button"
         className="button-primary flex items-center gap-2"
         onClick={() => setShowDropdown(!showDropdown)}
@@ -463,7 +463,7 @@ export default function DocumentDownloadButton({
             Download <ChevronDown size={14} className="ml-1" />
           </>
         )}
-      </button> */}
+      </button>
       
       {showDropdown && (
         <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg z-10 border border-gray-100 overflow-hidden">
