@@ -32,7 +32,7 @@ export default function DocumentsUpload({ onTranslate, isLoading, onCancel }) {
   const [file, setFile] = useState(null)
   const [dragActive, setDragActive] = useState(false)
   const [fromLang, setFromLang] = useState('en')
-  const [toLang, setToLang] = useState('ru')
+  const [toLang, setToLang] = useState('ka')
   
   const fileInputRef = useRef(null)
   

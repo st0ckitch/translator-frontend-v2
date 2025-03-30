@@ -93,6 +93,8 @@ export default function TranslationView() {
   const getLanguageName = (code) => {
     const languages = {
       'en': 'English',
+      'ka': 'Georgian',
+      'tr': 'Turkish',
       'es': 'Spanish',
       'fr': 'French',
       'de': 'German',
@@ -105,7 +107,6 @@ export default function TranslationView() {
       'ar': 'Arabic',
       'hi': 'Hindi',
       'fa': 'Persian',
-      'ka': 'Georgian'
     };
     
     return languages[code] || code;
