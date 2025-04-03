@@ -999,15 +999,53 @@ export default function DocumentTranslationPage() {
   const handleCopyText = async () => {
     try {
       if (!contentRef.current) return;
-      const text = contentRef.current.innerText;
-      await navigator.clipboard.writeText(text);
+      
+      // Create a new ClipboardItem with HTML content
+      const htmlContent = contentRef.current.innerHTML;
+      const plainText = contentRef.current.innerText;
+      
+      // Use clipboard API with HTML format
+      if (navigator.clipboard.write && typeof ClipboardItem !== 'undefined') {
+        // Modern clipboard API with HTML support
+        const clipboardItem = new ClipboardItem({
+          'text/html': new Blob([htmlContent], { type: 'text/html' }),
+          'text/plain': new Blob([plainText], { type: 'text/plain' })
+        });
+        
+        await navigator.clipboard.write([clipboardItem]);
+      } else {
+        // Fallback for browsers without HTML clipboard support
+        // Use document.execCommand as a fallback
+        const tempElement = document.createElement('div');
+        tempElement.innerHTML = htmlContent;
+        document.body.appendChild(tempElement);
+        
+        const range = document.createRange();
+        range.selectNodeContents(tempElement);
+        
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        
+        document.execCommand('copy');
+        document.body.removeChild(tempElement);
+      }
       
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
-      toast.success('Text copied to clipboard!');
+      toast.success('Text copied to clipboard with formatting!');
     } catch (err) {
       console.error('Failed to copy text:', err);
-      toast.error('Failed to copy text to clipboard');
+      
+      // Fallback to plain text if HTML copy fails
+      try {
+        await navigator.clipboard.writeText(contentRef.current.innerText);
+        toast.success('Text copied to clipboard (plain text only)');
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+      } catch (fallbackErr) {
+        toast.error('Failed to copy text to clipboard');
+      }
     }
   };
 
