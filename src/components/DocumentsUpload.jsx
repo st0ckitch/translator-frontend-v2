@@ -13,6 +13,8 @@ const SUPPORTED_FILE_TYPES = [
 
 const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
+  { value: 'ka', label: 'Georgian'},
+  { value: 'tr', label: 'Turkish'},
   { value: 'es', label: 'Spanish' },
   { value: 'fr', label: 'French' },
   { value: 'de', label: 'German' },
@@ -25,14 +27,13 @@ const LANGUAGE_OPTIONS = [
   { value: 'ar', label: 'Arabic' },
   { value: 'hi', label: 'Hindi' },
   // { value: 'fa', label: 'Persian' },
-  { value: 'ka', label: 'Georgian'}
 ]
 
 export default function DocumentsUpload({ onTranslate, isLoading, onCancel }) {
   const [file, setFile] = useState(null)
   const [dragActive, setDragActive] = useState(false)
   const [fromLang, setFromLang] = useState('en')
-  const [toLang, setToLang] = useState('ru')
+  const [toLang, setToLang] = useState('ka')
   
   const fileInputRef = useRef(null)
   

@@ -83,6 +83,8 @@ export default function TranslationHistory() {
   const getLanguageName = (code) => {
     const languages = {
       'en': 'English',
+      'ka': 'Georgian',
+      'tr': 'Turkish',
       'es': 'Spanish',
       'fr': 'French',
       'de': 'German',
@@ -94,8 +96,7 @@ export default function TranslationHistory() {
       'ko': 'Korean',
       'ar': 'Arabic',
       'hi': 'Hindi',
-      'fa': 'Persian',
-      'ka': 'Georgian'
+      'fa': 'Persian'
     };
     
     return languages[code] || code;
