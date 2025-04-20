@@ -5,11 +5,10 @@ import api from '../services/api';
 
 export default function PurchasePages({ onSuccess, className = "" }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [pageAmount, setPageAmount] = useState(10);
-  const [email, setEmail] = useState('');
   const [isPurchasing, setIsPurchasing] = useState(false);
   const [purchaseInfo, setPurchaseInfo] = useState(null);
   const [step, setStep] = useState(1);
+  const [email, setEmail] = useState('');
 
   // Predefined package options
   const packageOptions = [
@@ -18,6 +17,9 @@ export default function PurchasePages({ onSuccess, className = "" }) {
     { pages: 200, label: '200 pages', price: 240 },
   ];
 
+  // Default to first package option instead of 10 pages
+  const [pageAmount, setPageAmount] = useState(packageOptions[0].pages);
+  
   // Custom amount handling
   const [customAmount, setCustomAmount] = useState('');
   const [isCustom, setIsCustom] = useState(false);
@@ -28,7 +30,7 @@ export default function PurchasePages({ onSuccess, className = "" }) {
       return pages * 2; // Custom price is 2x the page amount
     } else {
       const selectedPackage = packageOptions.find(pkg => pkg.pages === pages);
-      return selectedPackage ? selectedPackage.price : 0;
+      return selectedPackage ? selectedPackage.price : pages * 2; // Fallback to custom pricing if no package found
     }
   };
 
@@ -42,7 +44,7 @@ export default function PurchasePages({ onSuccess, className = "" }) {
     setIsModalOpen(false);
     // Reset state when closing
     setIsPurchasing(false);
-    setPageAmount(10);
+    setPageAmount(packageOptions[0].pages); // Reset to first package
     setEmail('');
     setCustomAmount('');
     setIsCustom(false);
