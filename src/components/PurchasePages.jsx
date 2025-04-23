@@ -214,7 +214,7 @@ export default function PurchasePages({ onSuccess, className = "" }) {
                             className="form-input"
                           />
                           <p className="mt-1 text-sm text-gray-500">
-                            Price: {currentPrice} GEL (2 GEL per page)
+                            Price: {currentPrice} GEL (0.5 GEL per page)
                           </p>
                         </div>
                       )}
