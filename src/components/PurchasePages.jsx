@@ -12,9 +12,9 @@ export default function PurchasePages({ onSuccess, className = "" }) {
 
   // Predefined package options
   const packageOptions = [
-    { pages: 50, label: '50 pages', price: 100 },
-    { pages: 100, label: '100 pages', price: 170 },
-    { pages: 200, label: '200 pages', price: 240 },
+    { pages: 50, label: '50 pages', price: 25 },
+    { pages: 100, label: '100 pages', price: 50 },
+    { pages: 200, label: '200 pages', price: 100 },
   ];
 
   // Default to first package option instead of 10 pages
@@ -27,10 +27,10 @@ export default function PurchasePages({ onSuccess, className = "" }) {
   // Calculate price based on page amount
   const calculatePrice = (pages) => {
     if (isCustom) {
-      return pages * 2; // Custom price is 2x the page amount
+      return pages * 0.5; // Custom price is 2x the page amount
     } else {
       const selectedPackage = packageOptions.find(pkg => pkg.pages === pages);
-      return selectedPackage ? selectedPackage.price : pages * 2; // Fallback to custom pricing if no package found
+      return selectedPackage ? selectedPackage.price : pages * 0.5; // Fallback to custom pricing if no package found
     }
   };
 
