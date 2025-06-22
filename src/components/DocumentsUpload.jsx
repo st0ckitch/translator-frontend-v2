@@ -26,6 +26,8 @@ const LANGUAGE_OPTIONS = [
   { value: 'ko', label: 'Korean' },
   { value: 'ar', label: 'Arabic' },
   { value: 'hi', label: 'Hindi' },
+  { value: 'az', label: 'Azerbaijani'},
+  { value: 'hy', label: 'Armenian'}
   // { value: 'fa', label: 'Persian' },
 ]
 
